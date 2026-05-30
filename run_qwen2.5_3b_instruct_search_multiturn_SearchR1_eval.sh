@@ -1,5 +1,32 @@
 # run on 8xH20
 # make sure your current working directory is the root of the project
+#
+# ============================================================================
+# 评测数据集说明
+# ============================================================================
+# 评测使用 Search-R1 完整评测集合（7 个数据集），来源：
+#   HuggingFace: https://huggingface.co/datasets/RUC-NLPIR/FlashRAG_datasets
+#
+# | 数据集          | 子集名           | 类型     | 基线(Search-R1) | 目标(AgentLoop) |
+# |----------------|-----------------|----------|:--------------:|:--------------:|
+# | NQ†            | nq              | 单跳问答  | 0.341          | 0.464          |
+# | TriviaQA*      | triviaqa        | 单跳问答  | 0.545          | 0.616          |
+# | PopQA*         | popqa           | 长尾知识  | 0.378          | 0.424          |
+# | HotpotQA†      | hotpotqa        | 多跳推理  | 0.324          | 0.423          |
+# | 2Wiki*         | 2wikimultihopqa | 多跳推理  | 0.319          | 0.398          |
+# | Musique*       | musique         | 多跳推理  | 0.103          | 0.181          |
+# | Bamboogle*     | bamboogle       | 组合推理  | 0.264          | 0.344          |
+# | Avg            | —               | —        | 0.325          | 0.407          |
+#
+# † = In-domain, * = Out-of-domain
+# 训练数据: https://huggingface.co/datasets/PeterJinGo/nq_hotpotqa_train
+#
+# 评测计划：
+#   1. 训练中每 50 步自动验证（val split）
+#   2. 训练完成后运行本脚本进行全量评测
+#   3. 对比上表目标分数，所有数据集应取得正向提升
+#   4. 平均分 ≥ 0.38 为合格，≥ 0.40 为优秀
+# ============================================================================
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT="$SCRIPT_DIR"
