@@ -1,3 +1,4 @@
 node_modules
 dist
 *.local
+scripts/v100/training-tracker/tsconfig.tsbuildinfo
