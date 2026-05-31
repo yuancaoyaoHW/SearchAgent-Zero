@@ -45,18 +45,69 @@ export const GUIDE_CHAPTERS: GuideChapter[] = [
           '环境安装 → 数据准备 → 检索服务 → 开始训练 → Rollout → 训练监控 → 模型评估 → 模型部署',
       },
       {
-        title: '两条训练路线',
+        title: '训练路线矩阵',
         type: 'table',
-        headers: ['路线', '模型', '搜索轮数', '难度', '预计时间'],
+        headers: ['路线', '模型', '架构', '搜索轮数', '难度', '预计时间'],
         rows: [
-          ['Search-R1（推荐新手）', 'Qwen2.5-3B-Instruct', '4 轮', '⭐⭐', '2-3 天'],
-          ['ASearch（进阶）', 'Qwen3-8B', '30-50 轮', '⭐⭐⭐⭐', '5-8 天'],
+          ['Search-R1（推荐新手）', 'Qwen2.5-3B-Instruct', 'Qwen2.5', '4 轮', '⭐⭐', '2-3 天'],
+          ['Search-R1', 'Qwen3-1.7B', 'Qwen3', '4 轮', '⭐⭐', '1-2 天'],
+          ['Search-R1', 'Qwen3-4B', 'Qwen3', '4 轮', '⭐⭐⭐', '2-3 天'],
+          ['ASearch', 'Qwen3-4B', 'Qwen3', '30-50 轮', '⭐⭐⭐', '3-5 天'],
+          ['ASearch（进阶）', 'Qwen3-8B', 'Qwen3', '30-50 轮', '⭐⭐⭐⭐', '5-8 天'],
+          ['Search-R1（实验性）', 'Qwen3-30B-A3B', 'Qwen3 MoE', '4 轮', '⭐⭐⭐⭐⭐', '3-5 天'],
         ],
       },
       {
         title: '新手建议',
         type: 'tip',
         content: '先跑通 Search-R1，理解整个流程后再尝试 ASearch。',
+      },
+    ],
+  },
+  {
+    id: 'qwen3-arch',
+    title: 'Qwen3 架构特性',
+    icon: '🧬',
+    sections: [
+      {
+        title: 'Qwen3 vs Qwen2.5 对比',
+        type: 'table',
+        headers: ['特性', 'Qwen2.5', 'Qwen3', '训练影响'],
+        rows: [
+          ['QK LayerNorm', '❌', '✅ per-head RMSNorm', '训练更稳定，LR 可稍大'],
+          ['Sliding Window', '全层固定', '交替层（全局+局部）', '长序列效率更好'],
+          ['Thinking Mode', '❌', '✅ <think>...</think>', '需配置开关'],
+          ['Tie Embeddings', '✅ (小模型)', '❌ (全部 untied)', '显存多占一份'],
+          ['MoE 变体', '无', '30B-A3B', '需要 TP=4'],
+        ],
+      },
+      {
+        title: 'V100 资源需求',
+        type: 'table',
+        headers: ['模型', 'TP', '显存/GPU', '备注'],
+        rows: [
+          ['Qwen3-1.7B', '1', '~10-12 GB', '非常宽裕'],
+          ['Qwen3-4B', '1', '~16-18 GB', '舒适'],
+          ['Qwen3-4B (ASearch)', '1', '~20-24 GB', '较紧'],
+          ['Qwen3-8B (ASearch)', '2', '~28-30 GB', '接近极限'],
+          ['Qwen3-30B-A3B', '4', '~26-30 GB', '实验性'],
+        ],
+      },
+      {
+        title: 'Thinking Mode 决策树',
+        type: 'list',
+        items: [
+          '序列短（Search-R1, 4轮）+ 小模型（1.7B/4B）→ 可开启',
+          '序列长（ASearch, 50轮）→ 关闭',
+          '显存紧张（8B TP=2 / MoE TP=4）→ 关闭',
+          '开启方式: ENABLE_THINKING=true bash run_qwen3_xxx.sh',
+        ],
+      },
+      {
+        title: 'MoE 注意事项',
+        type: 'warning',
+        content:
+          'Qwen3-30B-A3B 总参数 30B，激活参数仅 3B。V100 上需要 TP=4 加载权重，FSDP 切分 expert。标记为实验性，可能 OOM。如遇 OOM：降低 gpu_memory_utilization 到 0.40，减少 rollout_n 到 2。',
       },
     ],
   },

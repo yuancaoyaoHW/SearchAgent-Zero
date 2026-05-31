@@ -310,3 +310,35 @@ actor_rollout_ref.actor.fsdp_config.optimizer_offload=True
 actor_rollout_ref.actor.fsdp_config.param_offload=True
 actor_rollout_ref.model.enable_activation_offload=True
 ```
+
+## Qwen3 特有调参建议
+
+### Learning Rate
+
+Qwen3 的 QK-LayerNorm 使训练更稳定，可以使用比 Qwen2.5 稍高的学习率：
+
+| 模型 | 推荐 LR | 对比 Qwen2.5 |
+|------|---------|-------------|
+| Qwen3-1.7B | 2e-6 ~ 3e-6 | +50% |
+| Qwen3-4B | 1.5e-6 ~ 2e-6 | +30% |
+| Qwen3-8B | 1e-6 ~ 1.5e-6 | 相当 |
+| Qwen3-30B-A3B | 5e-7 ~ 1e-6 | 更保守 |
+
+### Thinking Mode 序列长度调整
+
+开启 thinking 时，需要增加 `max_response_length`：
+
+```
+effective_max_response = base_max_response + MAX_THINKING_TOKENS
+```
+
+推荐 `MAX_THINKING_TOKENS` 值：
+- Search-R1 (4轮): 256 tokens
+- ASearch (不建议开启): 如果强制开启，512 tokens
+
+### MoE Load Balancing
+
+Qwen3-30B-A3B 使用 top-2 routing。如果观察到：
+- 部分 expert 利用率极低 → 正常现象，MoE 天然稀疏
+- 训练 loss 震荡 → 降低 LR 到 5e-7
+- 某些 GPU 显存不均 → TP=4 下正常，expert 分布不完全均匀
