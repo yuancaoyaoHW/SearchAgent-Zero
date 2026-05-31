@@ -20,6 +20,15 @@ import re
 import string
 
 
+def strip_thinking_tokens(text: str) -> str:
+    """Remove <think>...</think> blocks from model output before reward calculation.
+
+    Qwen3 thinking mode produces <think>reasoning</think> before the actual response.
+    These tokens should not affect reward scoring.
+    """
+    return re.sub(r'<think>.*?</think>\s*', '', text, flags=re.DOTALL)
+
+
 def is_valid_sequence(text):
     """
     检查轨迹是否符合特定的 ReAct/Tool-use 格式：
@@ -209,6 +218,7 @@ def compute_score(solution_str, ground_truth,extra_info, method="strict", format
         format_score: the score for the format
         score: the score for the correct answer
     """
+    solution_str = strip_thinking_tokens(solution_str)
     answer_lst = extract_solution(solution_str=solution_str)
 
     efficiency_score = 0
@@ -281,6 +291,7 @@ def compute_score_subem(solution_str, ground_truth, method="strict", format_scor
         format_score: the score for the format
         score: the score for the correct answer
     """
+    solution_str = strip_thinking_tokens(solution_str)
     answer = extract_solution(solution_str=solution_str)
     do_print = random.randint(1, 64) == 1
 

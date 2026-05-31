@@ -13,6 +13,12 @@ data:
   return_raw_chat: True
   shuffle: True
 
+# Qwen3 Thinking Mode Configuration
+thinking:
+  enabled: false
+  max_thinking_tokens: 512
+  strip_at_inference: true
+
 actor_rollout_ref:
   hybrid_engine: True
   rollout:
