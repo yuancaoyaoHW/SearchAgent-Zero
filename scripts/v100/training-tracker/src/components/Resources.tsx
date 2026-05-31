@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { RESOURCE_CATEGORIES, type ResourceCategory, type ResourceSubcategory, type ResourceItem } from '../data/resources'
 
@@ -6,8 +6,31 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
+/** Persist resources to the source JSON file via dev server API */
+async function saveToFile(data: ResourceCategory[]) {
+  try {
+    await fetch('/__api/resources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  } catch {
+    // Dev server not running or production build — silently skip
+  }
+}
+
 export function Resources() {
-  const [categories, setCategories] = useLocalStorage<ResourceCategory[]>('tracker-resources', RESOURCE_CATEGORIES)
+  const [categories, _setCategories] = useLocalStorage<ResourceCategory[]>('tracker-resources', RESOURCE_CATEGORIES)
+
+  // Wrap setter to also persist to file
+  const setCategories = useCallback((updater: ResourceCategory[] | ((prev: ResourceCategory[]) => ResourceCategory[])) => {
+    _setCategories((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      saveToFile(next)
+      return next
+    })
+  }, [_setCategories])
+
   const [expandedCat, setExpandedCat] = useState<string | null>(categories[0]?.id ?? null)
   const [editingItem, setEditingItem] = useState<{ catId: string; subIdx: number; itemIdx: number } | null>(null)
   const [showAddItem, setShowAddItem] = useState<{ catId: string; subIdx: number } | null>(null)
