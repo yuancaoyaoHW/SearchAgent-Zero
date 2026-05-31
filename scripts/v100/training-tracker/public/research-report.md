@@ -2,7 +2,9 @@
 
 > 生成时间：2026-05-31 | 基于 SearchAgent-Zero fork 代码分析 + 论文调研 + 实验设计
 
+
 ---
+
 
 ## 目录
 
@@ -12,9 +14,12 @@
 4. [研究方向与实验设计](#四研究方向与实验设计)
 5. [优先级总览](#五优先级总览)
 
+
 ---
 
+
 ## 一、仓库技术分析
+
 
 ### 1.1 项目定位
 
@@ -24,9 +29,11 @@ SearchAgent-Zero 是基于 verl 框架的 Search Agent 强化学习训练系统�
 
 核心创新：异常轨迹过滤、credit assignment、搜索结果 summary 压缩、同步 GRPO + 全异步训练双模式。
 
+
 ### 1.2 核心目录结构
 
 ```
+
 SearchAgent-Zero/
 ├── examples/search_agent_rl/          # 配置、数据预处理、retriever
 │   ├── config/
@@ -54,7 +61,9 @@ SearchAgent-Zero/
 ├── run_qwen2.5_3b_instruct_search_multiturn_SearchR1.sh
 ├── run_qwen3_8b_instruct_search_multiturn_ASearch.sh
 └── run_qwen3_8b_instruct_search_multiturn_ASearch_fully_async.sh
+
 ```
+
 
 ### 1.3 训练入口
 
@@ -63,6 +72,7 @@ SearchAgent-Zero/
 | 同步 GRPO | `verl.trainer.main_ppo` | `run_qwen2.5_3b_*_SearchR1.sh`, `run_qwen3_8b_*_ASearch.sh` |
 | 全异步 | `verl.experimental.fully_async_policy.fully_async_main` | `run_*_fully_async.sh` |
 
+
 ### 1.4 数据格式
 
 Parquet 文件，每行包含：
@@ -70,20 +80,24 @@ Parquet 文件，每行包含：
 - `reward_model`: `{"ground_truth": {"target": [answer_list]}}`
 - `extra_info`: 含 `tools_kwargs.search.create_kwargs`（检索服务配置）
 
+
 ### 1.5 Rollout 与 Tool Call
 
 AgentLoop 状态机：`PENDING → GENERATING → PROCESSING_TOOLS → GENERATING → ... → TERMINATED`
 
 Tool call 格式（Hermes）：
+
 ```xml
 <thought>分析问题...</thought>
 <tool_call>{"name":"search","arguments":{"query_list":["query1"]}}</tool_call>
 <tool_response>检索结果...</tool_response>
 <thought>总结信息...</thought>
 <answer>最终答案</answer>
+
 ```
 
 Response mask：assistant token=1（参与梯度），tool response token=0（不参与）。
+
 
 ### 1.6 Reward 设计
 
@@ -92,6 +106,7 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 - `format_score`: 格式状态机验证通过 → 0.1
 - `efficiency_score`: 单个 `<answer>` 标签 → 0.5
 - 惩罚：`<answer>` 超 10 个 → score/4
+
 
 ### 1.7 异常轨迹过滤
 
@@ -104,9 +119,11 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | 序列过长 | 超 `max_model_len` | TERMINATED, mask=0 |
 | 重复搜索结果 | 文档签名重叠 ≥ 2/3 | 记录不终止 |
 
+
 ### 1.8 Credit Assignment
 
 `tool_agent_loop_credit_assignment.py` 的核心改进：异常发生时只将**当前轮之前**的 response_mask 置 0，保留当前轮 mask=1 用于惩罚。效果：只惩罚产生异常的 turn，不波及之前合法搜索。
+
 
 ### 1.9 Summary Compression
 
@@ -114,12 +131,14 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 - **Self-summary**：用训练中的模型自身生成摘要
 - **External-summary**：调用外部 API（支持多 base_url 负载均衡）
 
+
 ### 1.10 全异步训练
 
 架构：`FullyAsyncRollouter` + `FullyAsyncTrainer` 通过 `MessageQueue`（Ray actor）通信。
 - 4 GPU rollout + 4 GPU training
 - `staleness_threshold=0.5`（数据新鲜度）
 - Off-policy 修正：IS weights + Rejection Sampling
+
 
 ### 1.11 可改造入口
 
@@ -132,9 +151,12 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | Off-policy 修正 | `verl/trainer/ppo/rollout_corr_helper.py` | `compute_rollout_correction_and_rejection_mask()` |
 | Turn limit | 训练脚本 | `TURN_LIMIT_SCHEDULE` 环境变量 |
 
+
 ---
 
+
 ## 二、论文与开源项目综述
+
 
 ### 2.1 方法谱系
 
@@ -184,6 +206,7 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | BrowseComp | 1266 题，需持续多跳推理 | 极高 |
 | HLE | 2500 题，顶尖模型 <10% | 极高 |
 
+
 ### 2.2 关键论文详细分析
 
 #### Search-R1 (UIUC, COLM 2025)
@@ -219,7 +242,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 ---
 
+
 ## 三、关键技术判断
+
 
 ### 3.1 SFT Cold-Start 是否必要？
 
@@ -234,12 +259,14 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **综合判断**：对于已有 instruction-following 能力的 instruct 模型，SFT cold-start 非必要。对于 base model 或复杂工具组合（browse+search），SFT 有加速收敛价值。R1-Searcher 的两阶段 reward 是 SFT 的有效替代。
 
+
 ### 3.2 纯 RL 是否可行？
 
 **结论：可行，但有条件。**
 - 小模型（1.7B/4B）：格式学习慢，建议两阶段 reward 或少量 format SFT
 - 中模型（7B/8B）：纯 RL 可行，Search-R1/ReSearch 已验证
 - 大模型（32B+）：纯 RL 效果最好，ASearcher 已验证
+
 
 ### 3.3 Outcome Reward 是否过稀疏？
 
@@ -255,6 +282,7 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 4. GBR reward（s3）— 相对于 naive RAG 的增益
 5. Curriculum learning — turn_limit_schedule 渐进增加难度
 
+
 ### 3.4 多轮搜索 Credit Assignment 如何处理？
 
 **现有方案对比**：
@@ -268,9 +296,12 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **建议**：在当前 credit assignment 基础上，增加 turn-level info gain reward 作为辅助信号。
 
+
 ---
 
+
 ## 四、研究方向与实验设计
+
 
 ### 方向 1：SFT Cold-Start for Search Agent ⭐ P0
 
@@ -292,7 +323,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB，SFT 2-4h + API $50-100 | **闭环**：3-5 天
 
+
 ---
+
 
 ### 方向 2：GRPO for Tool-Use Search ⭐ P0
 
@@ -311,7 +344,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB，12-24h/实验 | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 3：Abnormal Trajectory Filtering ⭐ P1
 
@@ -331,7 +366,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：1-2 天 | **改动 < 50 行**
 
+
 ---
+
 
 ### 方向 4：Fine-Grained Credit Assignment ⭐ P0
 
@@ -350,7 +387,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-5 天
 
+
 ---
+
 
 ### 方向 5：Multi-Query Parallel Search ⭐ P1
 
@@ -367,7 +406,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 6：Internal vs External Knowledge Routing ⭐ P1
 
@@ -387,7 +428,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
+
 
 ### 方向 7：Search Result Compression / Memory ⭐ P1
 
@@ -406,7 +449,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：4-5 天
 
+
 ---
+
 
 ### 方向 8：Long-Horizon Multi-Turn Search ⭐ P1
 
@@ -423,7 +468,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB（需 `max_model_len=20000+`）| **闭环**：5-7 天
 
+
 ---
+
 
 ### 方向 9：Synthetic Trajectory Generation ⭐ P1
 
@@ -442,7 +489,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：4-5 天
 
+
 ---
+
 
 ### 方向 10：Agentic RAG Evaluation ⭐ P2
 
@@ -460,7 +509,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：低（评测不需要训练）| **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 11：Offline Search Environment Simulation ⭐ P2
 
@@ -479,7 +530,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：额外 4 GPU 部署 simulation LLM | **闭环**：5-7 天
 
+
 ---
+
 
 ### 方向 12：Latency-Aware / Cost-Aware Reward ⭐ P2
 
@@ -496,7 +549,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 13：Retrieval Budget Control ⭐ P2
 
@@ -513,7 +568,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 14：Hard Negative Trajectory Construction ⭐ P1
 
@@ -530,7 +587,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
+
 
 ### 方向 15：Self-Correction After Failed Search ⭐ P1
 
@@ -549,7 +608,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
+
 
 ### 方向 16：Evidence Attribution Reward ⭐ P2
 
@@ -566,7 +627,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
+
 
 ### 方向 17：Answerability Estimation ⭐ P2
 
@@ -583,7 +646,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 18：Query Decomposition ⭐ P1
 
@@ -600,7 +665,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
+
 
 ### 方向 19：Search Stopping Policy ⭐ P1
 
@@ -617,7 +684,9 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：2-3 天
 
+
 ---
+
 
 ### 方向 20：Retrieval-Noise Robustness ⭐ P2
 
@@ -636,9 +705,12 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 
 **资源**：8×V100-32GB | **闭环**：3-4 天
 
+
 ---
 
+
 ## 五、优先级总览
+
 
 ### P0（最高优先级，应最先完成）
 
@@ -647,6 +719,7 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | 1 | SFT Cold-Start | 所有后续 RL 实验的基础 | 3-5 天 |
 | 2 | GRPO for Tool-Use | 直接改进当前训练效果 | 2-3 天 |
 | 4 | Fine-Grained Credit Assignment | 核心研究贡献点 | 3-5 天 |
+
 
 ### P1（高优先级，P0 完成后推进）
 
@@ -663,6 +736,7 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | 18 | Query Decomposition | 多跳推理核心 | 3-4 天 |
 | 19 | Search Stopping Policy | 效率优化 | 2-3 天 |
 
+
 ### P2（中优先级，探索性方向）
 
 | # | 方向 | 核心价值 | 闭环时间 |
@@ -675,14 +749,18 @@ Response mask：assistant token=1（参与梯度），tool response token=0（�
 | 17 | Answerability Estimation | 鲁棒性 | 2-3 天 |
 | 20 | Retrieval-Noise Robustness | 鲁棒性 | 3-4 天 |
 
+
 ### 推荐执行路径
 
 ```
+
 Week 1: 方向 2 (GRPO) + 方向 3 (Filtering) → 快速验证基础改进
 Week 2: 方向 1 (SFT) + 方向 4 (Credit Assignment) → 核心研究贡献
 Week 3: 方向 5 (Multi-Query) + 方向 19 (Stopping) → 效率优化
 Week 4: 方向 8 (Long-Horizon) + 方向 6 (Routing) → 能力扩展
+
 ```
+
 
 ### 论文可写性排序
 
@@ -692,7 +770,9 @@ Week 4: 方向 8 (Long-Horizon) + 方向 6 (Routing) → 能力扩展
 4. **方向 8** (Long-Horizon) — 前沿方向
 5. **方向 1** (SFT Cold-Start) — 作为完整 pipeline 一部分
 
+
 ---
+
 
 ## 附录：资源需求汇总
 
@@ -702,6 +782,7 @@ Week 4: 方向 8 (Long-Horizon) + 方向 6 (Routing) → 能力扩展
 | 检索服务 | 4 GPU (dense retriever) | 独立节点 |
 | 存储 | 500GB (Wikipedia corpus + index) | 1TB |
 | API 费用 | $50-100 (SFT 轨迹生成) | $200 |
+
 
 ---
 
@@ -732,6 +813,8 @@ Week 4: 方向 8 (Long-Horizon) + 方向 6 (Routing) → 能力扩展
 | [2WikiMultiHopQA](https://github.com/Alab-NII/2wikimultihop) | Benchmark | https://github.com/Alab-NII/2wikimultihop |
 | [Musique](https://github.com/StonyBrookNLP/musique) | Benchmark | https://github.com/StonyBrookNLP/musique |
 
+
 ---
+
 
 *本报告由 repo-method-analyst、rl-sft-paper-scout、direction-experiment-designer 三个 agent 并行生成，主会话综合整理。*
