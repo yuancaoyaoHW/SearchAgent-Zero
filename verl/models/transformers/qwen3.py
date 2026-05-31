@@ -37,7 +37,7 @@ def qwen3_attn_forward(
     past_key_value: Optional[Cache] = None,
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
-) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     """
     Qwen3 attention forward with Ulysses sequence parallelism support.
 

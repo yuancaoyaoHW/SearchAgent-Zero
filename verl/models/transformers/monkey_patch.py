@@ -523,6 +523,12 @@ def apply_monkey_patch(
             Qwen3Attention.forward = qwen3_attn_forward
             print(f"Monkey patch Qwen3Attention.forward for Ulysses SP in {model.__class__.__name__}")
 
+            if model.config.model_type == "qwen3_moe":
+                from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeAttention
+
+                Qwen3MoeAttention.forward = qwen3_attn_forward
+                print(f"Monkey patch Qwen3MoeAttention.forward for Ulysses SP in {model.__class__.__name__}")
+
     if use_remove_padding or ulysses_sp_size > 1:
         if hasattr(module, "_flash_attention_forward"):  # transformers <= 4.47.1 or legacy models
             module._flash_attention_forward = _ulysses_flash_attention_forward
