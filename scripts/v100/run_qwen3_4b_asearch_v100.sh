@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-# SearchAgent-Zero: ASearch Training on 8×V100-32GB (Qwen3-8B)
+# SearchAgent-Zero: Qwen3-4B ASearch Training on 8×V100-32GB
 # =============================================================================
-# Adapted from run_qwen3_8b_instruct_search_multiturn_ASearch.sh
+# Memory budget: ~20-24 GB/GPU
 # Key V100 adaptations:
 #   - vLLM v0 engine (VLLM_USE_V1=0), XFORMERS backend
 #   - FP16 dtype (no BF16 on Volta)
 #   - SDPA attention in HuggingFace model
 #   - Reduced batch/n/turns to fit 32GB VRAM
-#   - TP=2 for vLLM inference (8B model needs 2 GPUs for KV cache)
+#   - TP=1 for vLLM inference (4B model fits single GPU)
 #   - Synchronous mode only (fully-async needs V1 engine)
 #
 # ⚠️  This config is tight on memory. If OOM occurs:
 #   - Reduce rollout.n from 4 to 2
 #   - Reduce MAX_RESPONSE_LENGTH from 16384 to 12288
-#   - Reduce gpu_memory_utilization from 0.55 to 0.45
+#   - Reduce gpu_memory_utilization from 0.60 to 0.45
 # =============================================================================
 set -x
 
@@ -64,7 +64,7 @@ export HTTPS_PROXY=""
 export ALL_PROXY=""
 
 # -----------------------------------------------
-# Thinking mode (Qwen3 feature) - disabled for 8B ASearch (OOM risk)
+# Thinking mode (Qwen3 feature) - disabled for 4B ASearch (sequence too long)
 # -----------------------------------------------
 ENABLE_THINKING="${ENABLE_THINKING:-false}"
 
@@ -76,7 +76,7 @@ ulimit -n 65535
 ASEARCH_DATA_DIR="${ASEARCH_DATA_DIR:-${REPO_ROOT}/examples/search_agent_rl/ASearcher}"
 TRAIN_DATA="${TRAIN_DATA:-${ASEARCH_DATA_DIR}/ASearcher_train.parquet}"
 VAL_DATA="${VAL_DATA:-${ASEARCH_DATA_DIR}/ASearcher_test.parquet}"
-MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3-8B}"
+MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3-4B}"
 
 # -----------------------------------------------
 # V100-tuned hyperparameters (reduced from H20 defaults)
@@ -89,8 +89,8 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-12000}"                   # H20: 20000
 PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-32}"           # H20: 64
 TURN_LIMIT_SCHEDULE="${TURN_LIMIT_SCHEDULE:-0:30,50:40,100:50,200:50,300:50}"  # H20: 100 turns
 
-EXPERIMENT_NAME="${EXPERIMENT_NAME:-qwen3-8b_ASearch_v100}"
-PROJECT_NAME="${PROJECT_NAME:-search_agent_v100}"
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-qwen3-4b_asearch_v100}"
+PROJECT_NAME="${PROJECT_NAME:-asearch_v100}"
 DEFAULT_LOCAL_DIR="${DEFAULT_LOCAL_DIR:-./output/$EXPERIMENT_NAME}"
 ROLLOUT_DATA_DIR="${ROLLOUT_DATA_DIR:-./rollout_data/$EXPERIMENT_NAME}"
 LOG_FILE="${LOG_FILE:-./logs/$EXPERIMENT_NAME.log}"
@@ -131,7 +131,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     actor_rollout_ref.actor.optim.lr=5e-7 \
     actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -142,8 +142,8 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.rollout.max_model_len="$MAX_MODEL_LEN" \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.55 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.60 \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.n=4 \
@@ -185,5 +185,5 @@ python -m verl.trainer.main_ppo \
     trainer.total_epochs=2 \
     trainer.default_local_dir="$DEFAULT_LOCAL_DIR" \
     trainer.rollout_data_dir="$ROLLOUT_DATA_DIR" \
-    +data.apply_chat_template_kwargs.enable_thinking="$ENABLE_THINKING" \
+    +data.apply_chat_template_kwargs.enable_thinking=False \
     "$@" 2>&1 | tee "$LOG_FILE"
