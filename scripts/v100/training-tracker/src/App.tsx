@@ -10,6 +10,7 @@ import { Guide } from './components/Guide'
 import { Resources } from './components/Resources'
 import { Troubleshoot } from './components/Troubleshoot'
 import { Footer } from './components/Footer'
+import { ResearchReport } from './components/ResearchReport'
 import { useRetrievalHealth } from './hooks/useRetrievalHealth'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import type { Tab, TabId, Metric, Alert } from './types'
@@ -23,6 +24,7 @@ const TABS: Tab[] = [
   { id: 'guide', label: '训练指南', icon: '📖' },
   { id: 'resources', label: '参考资料', icon: '📚' },
   { id: 'troubleshoot', label: '问题诊断', icon: '🔧' },
+  { id: 'research', label: '研究方向', icon: '🔬' },
 ]
 
 export default function App() {
@@ -134,6 +136,7 @@ export default function App() {
         {currentTab === 'guide' && <Guide />}
         {currentTab === 'resources' && <Resources />}
         {currentTab === 'troubleshoot' && <Troubleshoot />}
+        {currentTab === 'research' && <ResearchReport />}
       </main>
 
       <Footer onExport={handleExport} onImport={handleImport} onClear={handleClear} />

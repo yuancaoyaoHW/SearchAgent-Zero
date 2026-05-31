@@ -61,7 +61,7 @@ export interface ChecklistItem {
   checked: boolean
 }
 
-export type TabId = 'live' | 'checklist' | 'log' | 'metrics' | 'gpu' | 'guide' | 'resources' | 'troubleshoot'
+export type TabId = 'live' | 'checklist' | 'log' | 'metrics' | 'gpu' | 'guide' | 'resources' | 'troubleshoot' | 'research'
 
 export interface Tab {
   id: TabId
