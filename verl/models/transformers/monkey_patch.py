@@ -513,6 +513,16 @@ def apply_monkey_patch(
         Qwen3_5VisionModel.fast_pos_embed_interpolate = fast_pos_embed_interpolate
         Qwen3_5MoeVisionModel.fast_pos_embed_interpolate = fast_pos_embed_interpolate
 
+    elif model.config.model_type in ["qwen3", "qwen3_moe"]:
+        # Qwen3 needs custom attention patch for QK-LayerNorm + Ulysses SP
+        if use_remove_padding or ulysses_sp_size > 1:
+            from transformers.models.qwen3.modeling_qwen3 import Qwen3Attention
+
+            from verl.models.transformers.qwen3 import qwen3_attn_forward
+
+            Qwen3Attention.forward = qwen3_attn_forward
+            print(f"Monkey patch Qwen3Attention.forward for Ulysses SP in {model.__class__.__name__}")
+
     if use_remove_padding or ulysses_sp_size > 1:
         if hasattr(module, "_flash_attention_forward"):  # transformers <= 4.47.1 or legacy models
             module._flash_attention_forward = _ulysses_flash_attention_forward
