@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --aod-bg: #282c34;
+  --aod-bg-light: #21252b;
+  --aod-bg-highlight: #2c313a;
+  --aod-fg: #abb2bf;
+  --aod-fg-muted: #5c6370;
+  --aod-accent: #61afef;
+  --aod-green: #98c379;
+  --aod-red: #e06c75;
+  --aod-yellow: #e5c07b;
+  --aod-purple: #c678dd;
+  --aod-cyan: #56b6c2;
+  --aod-orange: #d19a66;
+  --aod-border: #3e4451;
+}
+
+.dark {
+  color-scheme: dark;
+}

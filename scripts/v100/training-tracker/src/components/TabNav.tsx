@@ -11,15 +11,15 @@ interface TabNavProps {
 
 export function TabNav({ tabs, currentTab, onTabChange, gpuConnected, logConnected, alertCount }: TabNavProps) {
   return (
-    <nav className="flex gap-1 border-b-2 border-gray-200 mb-6 overflow-x-auto">
+    <nav className="flex gap-1 border-b-2 border-gray-200 dark:border-[var(--aod-border)] mb-6 overflow-x-auto">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
           className={`px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-[2px] transition-colors ${
             currentTab === tab.id
-              ? 'border-blue-600 text-blue-600 font-medium'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? 'border-[var(--aod-accent)] text-[var(--aod-accent)] font-medium'
+              : 'border-transparent text-gray-500 dark:text-[var(--aod-fg-muted)] hover:text-gray-700 dark:hover:text-[var(--aod-fg)]'
           }`}
         >
           {tab.icon} {tab.label}

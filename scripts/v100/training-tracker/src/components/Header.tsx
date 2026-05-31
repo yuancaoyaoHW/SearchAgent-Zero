@@ -20,10 +20,10 @@ export function Header({ retrievalStatus, gpuConnected, logConnected }: HeaderPr
 
   return (
     <header className="text-center py-8">
-      <h1 className="text-3xl font-bold text-gray-900">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-[var(--aod-fg)]">
         🔍 SearchAgent-Zero Training Tracker
       </h1>
-      <p className="text-gray-500 mt-1">训练进度追踪 · 性能监控 · 问题记录</p>
+      <p className="text-gray-500 dark:text-[var(--aod-fg-muted)] mt-1">训练进度追踪 · 性能监控 · 问题记录</p>
       <div className="flex items-center justify-center gap-4 mt-4 text-sm">
         <span className="flex items-center gap-1.5">
           <span className={`w-2 h-2 rounded-full ${retrievalColor}`} />

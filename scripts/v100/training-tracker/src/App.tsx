@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useDarkMode } from './hooks/useDarkMode'
 import { Header } from './components/Header'
 import { TabNav } from './components/TabNav'
 import { LiveLog } from './components/LiveLog'
@@ -28,6 +29,7 @@ const TABS: Tab[] = [
 ]
 
 export default function App() {
+  const { isDark, mode, setMode } = useDarkMode()
   const [currentTab, setCurrentTab] = useState<TabId>('live')
   const [logConnected, setLogConnected] = useState(false)
   const [gpuConnected, setGpuConnected] = useState(false)
@@ -104,12 +106,21 @@ export default function App() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-5 py-4">
-      <Header
-        retrievalStatus={retrievalStatus}
-        gpuConnected={gpuConnected}
-        logConnected={logConnected}
-      />
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-[var(--aod-bg)] dark:text-[var(--aod-fg)] transition-colors">
+      <div className="max-w-6xl mx-auto px-5 py-4">
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-[var(--aod-border)] dark:bg-[var(--aod-bg-highlight)] dark:text-[var(--aod-fg)] hover:opacity-80 transition-opacity"
+          >
+            {isDark ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        </div>
+        <Header
+          retrievalStatus={retrievalStatus}
+          gpuConnected={gpuConnected}
+          logConnected={logConnected}
+        />
 
       <TabNav
         tabs={TABS}
@@ -143,6 +154,7 @@ export default function App() {
 
       {/* Hidden state sync for child components */}
       <ConnectionSync onLogChange={setLogConnected} onGpuChange={setGpuConnected} />
+      </div>
     </div>
   )
 }
