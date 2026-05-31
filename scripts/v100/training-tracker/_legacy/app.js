@@ -16,8 +16,9 @@ createApp({
             { id: 'log', label: '训练日志', icon: '📝' },
             { id: 'metrics', label: '训练曲线', icon: '📊' },
             { id: 'gpu', label: 'GPU 监控', icon: '🖥️' },
+            { id: 'guide', label: '训练指南', icon: '📖' },
+            { id: 'resources', label: '参考资料', icon: '📚' },
             { id: 'troubleshoot', label: '问题诊断', icon: '🔧' },
-            { id: 'reference', label: '快速参考', icon: '📚' },
         ];
 
         // =============================================
