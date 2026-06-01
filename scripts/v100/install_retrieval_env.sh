@@ -48,7 +48,7 @@ pip install --no-cache-dir \
     uvicorn \
     fastapi \
     huggingface_hub \
-    numpy
+    "numpy<2"
 
 # -----------------------------------------------
 # 4. Verify
