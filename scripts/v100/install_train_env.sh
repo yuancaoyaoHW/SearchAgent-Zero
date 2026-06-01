@@ -106,7 +106,9 @@ echo ""
 echo "[6/6] Installing SearchAgent-Zero in editable mode"
 cd "${REPO_ROOT}"
 pip install --no-deps -e .
-pre-commit install || true
+if git rev-parse --git-dir &>/dev/null; then
+    pre-commit install || true
+fi
 
 # -----------------------------------------------
 # Verification
