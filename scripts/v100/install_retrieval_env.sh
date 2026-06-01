@@ -31,7 +31,7 @@ conda activate "${ENV_NAME}"
 # -----------------------------------------------
 echo ""
 echo "[2/4] Installing PyTorch 2.4.0 via conda (for faiss-gpu compatibility)"
-conda install -y pytorch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 pytorch-cuda=12.1 -c pytorch -c nvidia
+conda install -y pytorch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 pytorch-cuda=12.4 -c pytorch -c nvidia
 
 # -----------------------------------------------
 # 3. Install faiss-gpu + retrieval deps
