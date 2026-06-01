@@ -37,12 +37,12 @@ conda activate "${ENV_NAME}"
 # 2. Install PyTorch 2.4 + CUDA 12.1
 # -----------------------------------------------
 echo ""
-echo "[2/6] Installing PyTorch 2.4.0 + CUDA 12.1"
+echo "[2/6] Installing PyTorch 2.4.0 + CUDA 12.4"
 pip install --no-cache-dir \
     torch==2.4.0 \
     torchvision==0.19.0 \
     torchaudio==2.4.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+    --index-url https://download.pytorch.org/whl/cu124
 
 # -----------------------------------------------
 # 3. Install vLLM 0.6.6.post1 (V100-compatible)
