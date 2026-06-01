@@ -39,6 +39,7 @@ conda install -y pytorch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 pytorch-cu
 echo ""
 echo "[3/4] Installing faiss-gpu and retrieval dependencies"
 conda install -y -c pytorch -c nvidia faiss-gpu=1.8.0
+conda install -y -c conda-forge 'libstdcxx-ng>=12'
 
 pip install --no-cache-dir \
     transformers \
