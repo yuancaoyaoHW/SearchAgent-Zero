@@ -43,6 +43,9 @@ if [[ ! -f "${CORPUS_FILE}" ]]; then
     exit 1
 fi
 
+# Ensure conda env's libstdc++ is used (GLIBCXX_3.4.29 for faiss)
+export LD_LIBRARY_PATH="${CONDA_PREFIX:-/root/miniconda3/envs/retriever-v100}/lib:${LD_LIBRARY_PATH:-}"
+
 echo ""
 echo "Starting retrieval server on port ${PORT}..."
 echo "  (Use Ctrl+C to stop, or run in tmux/screen for background)"
