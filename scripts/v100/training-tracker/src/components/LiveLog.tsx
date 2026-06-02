@@ -1,84 +1,36 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { useWebSocket } from '../hooks/useWebSocket'
-import { useLocalStorage } from '../hooks/useLocalStorage'
 import type { Metric, LogLine, Alert } from '../types'
 
 interface LiveLogProps {
-  onMetricsUpdate: (metrics: Metric[]) => void
-  onAlertsUpdate: (alerts: Alert[]) => void
+  wsUrl: string
+  setWsUrl: (value: string | ((prev: string) => string)) => void
+  connected: boolean
+  connect: () => void
+  disconnect: () => void
+  logLines: LogLine[]
+  metrics: Metric[]
   alerts: Alert[]
   onDismissAlert: (id: string) => void
+  defaultWsUrl: string
 }
 
-const MAX_LOG_LINES = 500
-const MAX_METRICS = 200
-const DEFAULT_LOG_WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8766`
-
-// Thresholds for alerts
-const ALERT_THRESHOLDS = {
-  kl: 2.0,
-  grad_norm: 50,
-  reward_drop: -0.1,
-}
-
-export function LiveLog({ onMetricsUpdate, onAlertsUpdate, alerts, onDismissAlert }: LiveLogProps) {
-  const [wsUrl, setWsUrl] = useLocalStorage('tracker-log-ws-url', DEFAULT_LOG_WS_URL)
+export function LiveLog({
+  wsUrl,
+  setWsUrl,
+  connected,
+  connect,
+  disconnect,
+  logLines,
+  metrics,
+  alerts,
+  onDismissAlert,
+  defaultWsUrl,
+}: LiveLogProps) {
   const [autoScroll, setAutoScroll] = useState(true)
-  const [logLines, setLogLines] = useState<LogLine[]>([])
-  const [metrics, setMetrics] = useState<Metric[]>([])
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   const latestMetric = metrics.length > 0 ? metrics[metrics.length - 1] : null
-
-  const handleMessage = useCallback((data: unknown) => {
-    const msg = data as Record<string, unknown>
-
-    if (msg.type === 'log') {
-      const line: LogLine = {
-        text: msg.text as string,
-        type: (msg.level as LogLine['type']) || 'info',
-        timestamp: new Date().toLocaleTimeString(),
-      }
-      setLogLines((prev) => [...prev.slice(-MAX_LOG_LINES), line])
-    }
-
-    if (msg.type === 'metric') {
-      const metric = msg.data as Metric
-      setMetrics((prev) => {
-        const next = [...prev.slice(-MAX_METRICS), metric]
-        onMetricsUpdate(next)
-        return next
-      })
-
-      // Check for alerts
-      const newAlerts: Alert[] = []
-      if (metric.kl && metric.kl > ALERT_THRESHOLDS.kl) {
-        newAlerts.push({
-          id: `kl-${Date.now()}`,
-          message: `⚠️ KL 过高: ${metric.kl.toFixed(4)} (阈值 ${ALERT_THRESHOLDS.kl})`,
-          severity: metric.kl > 5 ? 'critical' : 'warning',
-          timestamp: new Date().toLocaleTimeString(),
-        })
-      }
-      if (metric.grad_norm && metric.grad_norm > ALERT_THRESHOLDS.grad_norm) {
-        newAlerts.push({
-          id: `grad-${Date.now()}`,
-          message: `⚠️ Grad Norm 过高: ${metric.grad_norm.toFixed(2)} (阈值 ${ALERT_THRESHOLDS.grad_norm})`,
-          severity: metric.grad_norm > 100 ? 'critical' : 'warning',
-          timestamp: new Date().toLocaleTimeString(),
-        })
-      }
-      if (newAlerts.length > 0) {
-        onAlertsUpdate([...alerts, ...newAlerts])
-      }
-    }
-  }, [alerts, onAlertsUpdate, onMetricsUpdate])
-
-  const { connected, connect, disconnect } = useWebSocket({
-    url: wsUrl,
-    onMessage: handleMessage,
-  })
 
   // Auto-scroll
   useEffect(() => {
@@ -115,7 +67,7 @@ export function LiveLog({ onMetricsUpdate, onAlertsUpdate, alerts, onDismissAler
         <input
           value={wsUrl}
           onChange={(e) => setWsUrl(e.target.value)}
-          placeholder={DEFAULT_LOG_WS_URL}
+          placeholder={defaultWsUrl}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm w-60"
         />
         {!connected ? (
