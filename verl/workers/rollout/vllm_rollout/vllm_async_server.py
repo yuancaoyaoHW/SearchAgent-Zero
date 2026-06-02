@@ -26,7 +26,6 @@ from packaging import version
 from ray.actor import ActorHandle
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.cli.serve import run_headless
 from vllm.entrypoints.openai.api_server import build_app, init_app_state
 from vllm.inputs import TokensPrompt
 from vllm.lora.request import LoRARequest
@@ -416,6 +415,15 @@ class vLLMHttpServer:
 
     async def run_headless(self, args: argparse.Namespace):
         """Run headless server in a separate thread."""
+        try:
+            from vllm.entrypoints.cli.serve import run_headless
+        except ImportError as exc:
+            raise ImportError(
+                "The installed vLLM package does not expose run_headless. "
+                "This is only required for non-head server ranks in multi-node rollout. "
+                "Use a newer vLLM version or run single-node rollout."
+            ) from exc
+
         args.api_server_count = 0
 
         def run_headless_wrapper():
