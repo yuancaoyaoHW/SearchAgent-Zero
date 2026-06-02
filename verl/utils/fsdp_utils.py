@@ -20,7 +20,7 @@ import os
 from abc import ABC
 from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 import torch
 import torch.distributed as dist
@@ -35,6 +35,9 @@ from transformers.trainer_pt_utils import get_module_class_from_name
 from verl.utils.device import get_device_id, get_device_name, get_torch_device
 from verl.utils.model import check_exclude_modules, check_target_modules
 
+DTensor = ()
+DTensorSpec = Any
+
 if version.parse(torch.__version__) >= version.parse("2.6"):
     from torch.distributed.fsdp import CPUOffloadPolicy, FSDPModule, MixedPrecisionPolicy, fully_shard
     from torch.distributed.fsdp._fully_shard._fsdp_init import _get_post_forward_mesh_info
@@ -44,6 +47,16 @@ if version.parse(torch.__version__) >= version.parse("2.6"):
     fully_shard_module = torch.distributed.fsdp._fully_shard._fully_shard
 elif version.parse(torch.__version__) >= version.parse("2.4"):
     from torch.distributed._composable.fsdp import CPUOffloadPolicy, FSDPModule, MixedPrecisionPolicy, fully_shard
+
+    try:
+        from torch.distributed._tensor import DTensor
+    except ImportError:
+        from torch.distributed.tensor import DTensor
+
+    try:
+        from torch.distributed.tensor._dtensor_spec import DTensorSpec
+    except ImportError:
+        DTensorSpec = Any
 
     fully_shard_module = torch.distributed._composable.fsdp
 else:
