@@ -95,6 +95,7 @@ pip install --no-cache-dir \
     "pydantic>=2.9" \
     "grpcio>=1.62.1" \
     packaging \
+    cachetools \
     uvicorn \
     latex2sympy2_extended \
     math-verify

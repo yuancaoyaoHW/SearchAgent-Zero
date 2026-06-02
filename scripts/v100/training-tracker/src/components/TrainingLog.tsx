@@ -43,22 +43,22 @@ export function TrainingLog() {
   return (
     <section>
       <h2 className="text-xl font-semibold mb-2">📝 训练日志</h2>
-      <p className="text-sm text-gray-500 mb-4">记录训练过程中的观察、问题和操作</p>
+      <p className="text-sm text-gray-500 dark:text-[var(--aod-fg-muted)] mb-4">记录训练过程中的观察、问题和操作</p>
 
       {/* Add entry form */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+      <div className="bg-white dark:bg-[var(--aod-bg-highlight)] rounded-lg border border-gray-200 dark:border-[var(--aod-border)] p-4 mb-4">
         <div className="flex gap-3 mb-3">
           <input
             value={step}
             onChange={(e) => setStep(e.target.value)}
             placeholder="Step"
             type="number"
-            className="px-3 py-1.5 border border-gray-300 rounded text-sm w-24"
+            className="px-3 py-1.5 border border-gray-300 dark:border-[var(--aod-border)] rounded text-sm w-24 dark:bg-[var(--aod-bg-light)] dark:text-[var(--aod-fg)]"
           />
           <select
             value={type}
             onChange={(e) => setType(e.target.value as TrainingLogEntry['type'])}
-            className="px-3 py-1.5 border border-gray-300 rounded text-sm"
+            className="px-3 py-1.5 border border-gray-300 dark:border-[var(--aod-border)] rounded text-sm dark:bg-[var(--aod-bg-light)] dark:text-[var(--aod-fg)]"
           >
             <option value="observation">观察</option>
             <option value="issue">问题</option>
@@ -72,7 +72,7 @@ export function TrainingLog() {
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addLog()}
             placeholder="记录内容..."
-            className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm"
+            className="flex-1 px-3 py-1.5 border border-gray-300 dark:border-[var(--aod-border)] rounded text-sm dark:bg-[var(--aod-bg-light)] dark:text-[var(--aod-fg)]"
           />
           <button onClick={addLog} className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
             添加
@@ -83,20 +83,20 @@ export function TrainingLog() {
       {/* Log entries */}
       <div className="space-y-2">
         {logs.length === 0 && (
-          <p className="text-center text-gray-400 py-8">暂无日志记录</p>
+          <p className="text-center text-gray-400 dark:text-[var(--aod-fg-muted)] py-8">暂无日志记录</p>
         )}
         {logs.map((log) => (
-          <div key={log.id} className="flex items-start gap-3 bg-white rounded-lg border border-gray-200 p-3">
+          <div key={log.id} className="flex items-start gap-3 bg-white dark:bg-[var(--aod-bg-highlight)] rounded-lg border border-gray-200 dark:border-[var(--aod-border)] p-3">
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColors[log.type]}`}>
               {typeLabels[log.type]}
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-800">{log.content}</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-sm text-gray-800 dark:text-[var(--aod-fg)]">{log.content}</p>
+              <p className="text-xs text-gray-400 dark:text-[var(--aod-fg-muted)] mt-1">
                 {log.timestamp} {log.step > 0 && `· Step ${log.step}`}
               </p>
             </div>
-            <button onClick={() => removeLog(log.id)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+            <button onClick={() => removeLog(log.id)} className="text-gray-400 dark:text-[var(--aod-fg-muted)] hover:text-red-500 dark:hover:text-[var(--aod-red)] text-sm">✕</button>
           </div>
         ))}
       </div>

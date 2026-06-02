@@ -41,10 +41,10 @@ export function LiveLog({
 
   const lineClass = (type: LogLine['type']) => {
     switch (type) {
-      case 'error': return 'text-red-600'
-      case 'warn': return 'text-yellow-600'
-      case 'metric': return 'text-blue-600'
-      default: return 'text-gray-700'
+      case 'error': return 'text-red-600 dark:text-[var(--aod-red)]'
+      case 'warn': return 'text-yellow-700 dark:text-[var(--aod-yellow)]'
+      case 'metric': return 'text-blue-600 dark:text-[var(--aod-accent)]'
+      default: return 'text-gray-700 dark:text-[var(--aod-fg)]'
     }
   }
 
@@ -132,14 +132,14 @@ export function LiveLog({
       {/* Log stream */}
       <div
         ref={logContainerRef}
-        className="bg-gray-900 text-gray-100 rounded-lg p-4 h-80 overflow-y-auto font-mono text-xs"
+        className="bg-white text-gray-800 border border-gray-200 dark:bg-[var(--aod-bg-light)] dark:text-[var(--aod-fg)] dark:border-[var(--aod-border)] rounded-lg p-4 h-80 overflow-y-auto font-mono text-xs"
       >
         {logLines.length === 0 ? (
-          <p className="text-gray-500">等待日志连接...</p>
+          <p className="text-gray-500 dark:text-[var(--aod-fg-muted)]">等待日志连接...</p>
         ) : (
           logLines.map((line, i) => (
             <div key={i} className={lineClass(line.type)}>
-              <span className="text-gray-500">[{line.timestamp}]</span> {line.text}
+              <span className="text-gray-500 dark:text-[var(--aod-fg-muted)]">[{line.timestamp}]</span> {line.text}
             </div>
           ))
         )}
@@ -150,8 +150,8 @@ export function LiveLog({
 
 function MetricCard({ label, value, className = '' }: { label: string; value: string; className?: string }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-      <div className="text-xs text-gray-500">{label}</div>
+    <div className="bg-white dark:bg-[var(--aod-bg-highlight)] rounded-lg border border-gray-200 dark:border-[var(--aod-border)] p-3 text-center">
+      <div className="text-xs text-gray-500 dark:text-[var(--aod-fg-muted)]">{label}</div>
       <div className={`text-lg font-semibold mt-0.5 ${className}`}>{value}</div>
     </div>
   )
