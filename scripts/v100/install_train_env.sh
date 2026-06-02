@@ -5,7 +5,7 @@
 # This script creates a conda environment with all dependencies adapted for
 # NVIDIA V100 (sm_70). Key differences from the default install:
 #   - PyTorch 2.4 + CUDA 12.1
-#   - vLLM 0.7.3 (minimum supported by current verl code, V0 engine for V100)
+#   - vLLM 0.11.0 (matches current async rollout server CLI)
 #   - xformers (replaces FlashAttention-2 / FlashInfer which need sm_80+)
 #   - No flash-attn, no flashinfer, no sglang
 #   - Python 3.11
@@ -45,11 +45,11 @@ pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu124
 
 # -----------------------------------------------
-# 3. Install vLLM 0.7.3 (V100-compatible with current verl code)
+# 3. Install vLLM 0.11.0 (current async rollout server CLI)
 # -----------------------------------------------
 echo ""
-echo "[3/6] Installing vLLM 0.7.3 (V100 V0 engine)"
-pip install --no-cache-dir "vllm==0.7.3"
+echo "[3/6] Installing vLLM 0.11.0 (V100 V0 engine)"
+pip install --no-cache-dir "vllm==0.11.0"
 
 # -----------------------------------------------
 # 4. Install xformers (attention backend for V100)
