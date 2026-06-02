@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 import type { Metric, LogLine, Alert } from '../types'
 
 interface LiveLogProps {
@@ -12,6 +13,7 @@ interface LiveLogProps {
 
 const MAX_LOG_LINES = 500
 const MAX_METRICS = 200
+const DEFAULT_LOG_WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8766`
 
 // Thresholds for alerts
 const ALERT_THRESHOLDS = {
@@ -21,7 +23,7 @@ const ALERT_THRESHOLDS = {
 }
 
 export function LiveLog({ onMetricsUpdate, onAlertsUpdate, alerts, onDismissAlert }: LiveLogProps) {
-  const [wsUrl, setWsUrl] = useState('ws://localhost:8766')
+  const [wsUrl, setWsUrl] = useLocalStorage('tracker-log-ws-url', DEFAULT_LOG_WS_URL)
   const [autoScroll, setAutoScroll] = useState(true)
   const [logLines, setLogLines] = useState<LogLine[]>([])
   const [metrics, setMetrics] = useState<Metric[]>([])
@@ -113,7 +115,7 @@ export function LiveLog({ onMetricsUpdate, onAlertsUpdate, alerts, onDismissAler
         <input
           value={wsUrl}
           onChange={(e) => setWsUrl(e.target.value)}
-          placeholder="ws://localhost:8766"
+          placeholder={DEFAULT_LOG_WS_URL}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm w-60"
         />
         {!connected ? (

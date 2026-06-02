@@ -1,22 +1,52 @@
 import { useState, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 import type { GpuInfo, GpuSnapshot } from '../types'
 
 const MAX_HISTORY = 60
+const DEFAULT_GPU_WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8767`
+
+interface RawGpuInfo {
+  index?: number
+  id?: number
+  name?: string
+  temperature?: number | null
+  gpu_util?: number | null
+  utilization?: number | null
+  mem_used_mb?: number | null
+  memory_used?: number | null
+  mem_total_mb?: number | null
+  memory_total?: number | null
+  power_w?: number | null
+  power?: number | null
+}
+
+function normalizeGpuInfo(gpu: RawGpuInfo): GpuInfo {
+  return {
+    id: gpu.id ?? gpu.index ?? 0,
+    name: gpu.name ?? 'GPU',
+    temperature: gpu.temperature ?? 0,
+    utilization: gpu.utilization ?? gpu.gpu_util ?? 0,
+    memory_used: gpu.memory_used ?? gpu.mem_used_mb ?? 0,
+    memory_total: gpu.memory_total ?? gpu.mem_total_mb ?? 1,
+    power: gpu.power ?? gpu.power_w ?? 0,
+  }
+}
 
 export function GpuMonitor() {
-  const [wsUrl, setWsUrl] = useState('ws://localhost:8767')
+  const [wsUrl, setWsUrl] = useLocalStorage('tracker-gpu-ws-url', DEFAULT_GPU_WS_URL)
   const [gpuData, setGpuData] = useState<GpuInfo[]>([])
   const [history, setHistory] = useState<GpuSnapshot[]>([])
 
   const handleMessage = useCallback((data: unknown) => {
-    const msg = data as { gpus?: GpuInfo[] }
+    const msg = data as { gpus?: RawGpuInfo[] }
     if (msg.gpus) {
-      setGpuData(msg.gpus)
+      const gpus = msg.gpus.map(normalizeGpuInfo)
+      setGpuData(gpus)
       setHistory((prev) => [
         ...prev.slice(-MAX_HISTORY),
-        { timestamp: new Date().toLocaleTimeString(), gpus: msg.gpus! },
+        { timestamp: new Date().toLocaleTimeString(), gpus },
       ])
     }
   }, [])
@@ -58,7 +88,7 @@ export function GpuMonitor() {
         <input
           value={wsUrl}
           onChange={(e) => setWsUrl(e.target.value)}
-          placeholder="ws://localhost:8767"
+          placeholder={DEFAULT_GPU_WS_URL}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm w-60"
         />
         {!connected ? (
