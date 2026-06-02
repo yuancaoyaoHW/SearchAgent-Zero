@@ -128,7 +128,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.enable_activation_offload=True \
-    actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    +actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     actor_rollout_ref.actor.optim.lr=5e-7 \
     actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
