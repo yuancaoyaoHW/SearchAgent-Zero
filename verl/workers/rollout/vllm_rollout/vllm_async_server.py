@@ -93,6 +93,16 @@ class vLLMHttpServer:
     ```
     """
 
+    def __new__(cls, *args, **kwargs):
+        _server_debug(
+            "__new__ start "
+            f"args={len(args)} arg_types={[type(arg).__name__ for arg in args]} "
+            f"kwargs={list(kwargs.keys())}"
+        )
+        instance = super().__new__(cls)
+        _server_debug("__new__ done")
+        return instance
+
     def __init__(
         self,
         config,
