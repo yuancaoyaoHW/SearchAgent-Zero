@@ -105,15 +105,15 @@ class vLLMHttpServer:
 
     def __init__(
         self,
-        config,
-        model_config,
-        rollout_mode: RolloutMode,
-        workers: list[ActorHandle],
-        replica_rank: int,
-        node_rank: int,
-        gpus_per_node: int,
-        nnodes: int,
-        cuda_visible_devices: str,
+        config=None,
+        model_config=None,
+        rollout_mode: RolloutMode | None = None,
+        workers: list[ActorHandle] | None = None,
+        replica_rank: int | None = None,
+        node_rank: int | None = None,
+        gpus_per_node: int | None = None,
+        nnodes: int | None = None,
+        cuda_visible_devices: str | None = None,
     ):
         """
         Args:
@@ -126,6 +126,10 @@ class vLLMHttpServer:
             nnodes (int): number of nodes.
             cuda_visible_devices (str): cuda visible devices.
         """
+        if config is None:
+            _server_debug("__init__ empty done")
+            return
+
         try:
             _server_debug(
                 f"__init__ start replica_rank={replica_rank} node_rank={node_rank} "
@@ -186,6 +190,33 @@ class vLLMHttpServer:
         except BaseException:
             _server_debug("__init__ failed:\n" + traceback.format_exc())
             raise
+
+    def setup(
+        self,
+        config,
+        model_config,
+        rollout_mode: RolloutMode,
+        workers: list[ActorHandle],
+        replica_rank: int,
+        node_rank: int,
+        gpus_per_node: int,
+        nnodes: int,
+        cuda_visible_devices: str,
+    ):
+        _server_debug(f"setup start replica_rank={replica_rank} node_rank={node_rank}")
+        self.__init__(
+            config=config,
+            model_config=model_config,
+            rollout_mode=rollout_mode,
+            workers=workers,
+            replica_rank=replica_rank,
+            node_rank=node_rank,
+            gpus_per_node=gpus_per_node,
+            nnodes=nnodes,
+            cuda_visible_devices=cuda_visible_devices,
+        )
+        _server_debug(f"setup done replica_rank={self.replica_rank} node_rank={self.node_rank}")
+        return True
 
     def get_master_address(self):
         """Get master address and port for data parallel.
@@ -978,6 +1009,7 @@ class vLLMReplica(RolloutReplica):
 
         # create server actor in each node with node affinity and cuda visible devices
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
+        setup_tasks = []
         for node_rank in range(nnodes):
             workers = self.workers[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
             node_cuda_visible_devices = ",".join(
@@ -1009,18 +1041,23 @@ class vLLMReplica(RolloutReplica):
                 },
                 name=name,
                 max_concurrency=self.max_concurrency,
-            ).remote(
-                config=self.config,
-                model_config=self.model_config,
-                rollout_mode=self.rollout_mode,
-                workers=workers,
-                replica_rank=self.replica_rank,
-                node_rank=node_rank,
-                gpus_per_node=gpus_per_replica_node,
-                nnodes=nnodes,
-                cuda_visible_devices=node_cuda_visible_devices,
-            )
+            ).remote()
             self.servers.append(server)
+            setup_tasks.append(
+                server.setup.remote(
+                    config=self.config,
+                    model_config=self.model_config,
+                    rollout_mode=self.rollout_mode,
+                    workers=workers,
+                    replica_rank=self.replica_rank,
+                    node_rank=node_rank,
+                    gpus_per_node=gpus_per_replica_node,
+                    nnodes=nnodes,
+                    cuda_visible_devices=node_cuda_visible_devices,
+                )
+            )
+
+        await asyncio.gather(*setup_tasks)
 
         # launch http server in each node
         master_address, master_port, dp_rpc_port = await self.servers[0].get_master_address.remote()
