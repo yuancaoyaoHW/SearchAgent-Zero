@@ -256,6 +256,59 @@ class vLLMHttpServer:
         _server_debug(f"setup done replica_rank={self.replica_rank} node_rank={self.node_rank}")
         return True
 
+    def setup_primitives(
+        self,
+        rollout_mode: str,
+        replica_rank: int,
+        node_rank: int,
+        gpus_per_node: int,
+        nnodes: int,
+        cuda_visible_devices: str,
+    ):
+        _server_debug(f"setup_primitives start replica_rank={replica_rank} node_rank={node_rank}")
+        self._setup_rollout_mode = rollout_mode
+        self._setup_replica_rank = replica_rank
+        self._setup_node_rank = node_rank
+        self._setup_gpus_per_node = gpus_per_node
+        self._setup_nnodes = nnodes
+        self._setup_cuda_visible_devices = cuda_visible_devices
+        _server_debug(f"setup_primitives done replica_rank={replica_rank} node_rank={node_rank}")
+        return True
+
+    def setup_config_payload(self, config):
+        _server_debug("setup_config_payload start")
+        self._setup_config = config
+        _server_debug("setup_config_payload done")
+        return True
+
+    def setup_model_config_payload(self, model_config):
+        _server_debug("setup_model_config_payload start")
+        self._setup_model_config = model_config
+        _server_debug("setup_model_config_payload done")
+        return True
+
+    def setup_workers(self, workers: list[ActorHandle]):
+        _server_debug(f"setup_workers start count={len(workers)}")
+        self._setup_workers = workers
+        _server_debug("setup_workers done")
+        return True
+
+    def setup_from_payloads(self):
+        _server_debug("setup_from_payloads start")
+        self.setup(
+            config=self._setup_config,
+            model_config=self._setup_model_config,
+            rollout_mode=self._setup_rollout_mode,
+            workers=self._setup_workers,
+            replica_rank=self._setup_replica_rank,
+            node_rank=self._setup_node_rank,
+            gpus_per_node=self._setup_gpus_per_node,
+            nnodes=self._setup_nnodes,
+            cuda_visible_devices=self._setup_cuda_visible_devices,
+        )
+        _server_debug("setup_from_payloads done")
+        return True
+
     def get_master_address(self):
         """Get master address and port for data parallel.
         Returns:
@@ -1101,8 +1154,35 @@ class vLLMReplica(RolloutReplica):
             )
 
         await asyncio.gather(*[server.ping.remote() for server in self.servers])
-        setup_tasks = [server.setup.remote(**payload) for server, payload in zip(self.servers, setup_payloads)]
-        await asyncio.gather(*setup_tasks)
+        await asyncio.gather(
+            *[
+                server.setup_primitives.remote(
+                    rollout_mode=payload["rollout_mode"],
+                    replica_rank=payload["replica_rank"],
+                    node_rank=payload["node_rank"],
+                    gpus_per_node=payload["gpus_per_node"],
+                    nnodes=payload["nnodes"],
+                    cuda_visible_devices=payload["cuda_visible_devices"],
+                )
+                for server, payload in zip(self.servers, setup_payloads)
+            ]
+        )
+        await asyncio.gather(
+            *[
+                server.setup_config_payload.remote(payload["config"])
+                for server, payload in zip(self.servers, setup_payloads)
+            ]
+        )
+        await asyncio.gather(
+            *[
+                server.setup_model_config_payload.remote(payload["model_config"])
+                for server, payload in zip(self.servers, setup_payloads)
+            ]
+        )
+        await asyncio.gather(
+            *[server.setup_workers.remote(payload["workers"]) for server, payload in zip(self.servers, setup_payloads)]
+        )
+        await asyncio.gather(*[server.setup_from_payloads.remote() for server in self.servers])
 
         # launch http server in each node
         master_address, master_port, dp_rpc_port = await self.servers[0].get_master_address.remote()
