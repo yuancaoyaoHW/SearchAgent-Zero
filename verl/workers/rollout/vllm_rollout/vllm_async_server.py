@@ -861,6 +861,8 @@ class vLLMHttpServer:
 
     def _init_config(self, config):
         """Initialise config. Override when a specific dataclass_type is needed."""
+        if isinstance(config, dict) and "_target_" not in config:
+            return omega_conf_to_dataclass(config, dataclass_type=RolloutConfig)
         return omega_conf_to_dataclass(config)
 
     def _init_model_config(self, model_config):
@@ -1043,6 +1045,7 @@ class vLLMReplica(RolloutReplica):
 
         # create server actor in each node with node affinity and cuda visible devices
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
+        config_payload = _plain_config(self.config)
         model_config_payload = _model_config_init_payload(self.model_config)
         setup_tasks = []
         for node_rank in range(nnodes):
@@ -1081,7 +1084,7 @@ class vLLMReplica(RolloutReplica):
             self.servers.append(server)
             setup_tasks.append(
                 server.setup.remote(
-                    config=self.config,
+                    config=config_payload,
                     model_config=model_config_payload,
                     rollout_mode=self.rollout_mode.value,
                     workers=server_workers,
