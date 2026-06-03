@@ -33,6 +33,7 @@ export MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-128}"
 export LR="${LR:-1e-6}"
 export SEED="${SEED:-0}"
 export CLIP_GRAD_NORM="${CLIP_GRAD_NORM:-1.0}"
+export TRAIN_DTYPE="${TRAIN_DTYPE:-float32}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -131,6 +132,20 @@ def save_checkpoint(model, tokenizer, output_dir: Path, step: int):
     print(f"[hf-grpo-train] saved checkpoint: {ckpt_dir}", flush=True)
 
 
+def resolve_dtype(name: str):
+    if name == "float32":
+        return torch.float32
+    if name == "float16":
+        return torch.float16
+    raise ValueError(f"TRAIN_DTYPE must be float32 or float16, got {name}")
+
+
+def assert_finite_model(model, step: int):
+    for name, param in model.named_parameters():
+        if param.requires_grad and not torch.isfinite(param).all():
+            raise RuntimeError(f"Non-finite parameter after optimizer step {step}: {name}")
+
+
 def main():
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for this V100 training script")
@@ -148,6 +163,7 @@ def main():
     lr = float(os.environ["LR"])
     seed = int(os.environ["SEED"])
     clip_grad_norm = float(os.environ["CLIP_GRAD_NORM"])
+    train_dtype = resolve_dtype(os.environ["TRAIN_DTYPE"])
 
     if train_steps <= 0:
         raise ValueError(f"TRAIN_STEPS must be > 0, got {train_steps}")
@@ -165,6 +181,7 @@ def main():
     print(f"[hf-grpo-train] data={train_data}")
     print(f"[hf-grpo-train] output_dir={output_dir}")
     print(f"[hf-grpo-train] train_steps={train_steps} batch_size={batch_size} group_size={group_size}")
+    print(f"[hf-grpo-train] train_dtype={train_dtype}")
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
@@ -177,7 +194,7 @@ def main():
 
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=torch.float16,
+        dtype=train_dtype,
         trust_remote_code=True,
         attn_implementation="sdpa",
     ).cuda()
@@ -261,6 +278,7 @@ def main():
                 loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_grad_norm)
             optimizer.step()
+            assert_finite_model(model, step)
 
             elapsed = time.time() - start_time
             record = {

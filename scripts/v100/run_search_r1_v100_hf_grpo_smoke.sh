@@ -27,6 +27,7 @@ export MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-1024}"
 export MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-64}"
 export LR="${LR:-1e-6}"
 export SEED="${SEED:-0}"
+export TRAIN_DTYPE="${TRAIN_DTYPE:-float32}"
 
 python - <<'PY'
 import os
@@ -104,6 +105,14 @@ def response_logprob_loss(model, sequence, prompt_len, advantage):
     return -advantage * seq_log_prob
 
 
+def resolve_dtype(name: str):
+    if name == "float32":
+        return torch.float32
+    if name == "float16":
+        return torch.float16
+    raise ValueError(f"TRAIN_DTYPE must be float32 or float16, got {name}")
+
+
 def main():
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for this V100 smoke script")
@@ -116,12 +125,14 @@ def main():
     max_new_tokens = int(os.environ["MAX_NEW_TOKENS"])
     lr = float(os.environ["LR"])
     seed = int(os.environ["SEED"])
+    train_dtype = resolve_dtype(os.environ["TRAIN_DTYPE"])
     torch.manual_seed(seed)
 
     print(f"[hf-grpo-smoke] device={torch.cuda.get_device_name(0)} capability={torch.cuda.get_device_capability(0)}")
     print(f"[hf-grpo-smoke] model={model_path}")
     print(f"[hf-grpo-smoke] data={train_data}")
     print(f"[hf-grpo-smoke] batch_size={batch_size} group_size={group_size}")
+    print(f"[hf-grpo-smoke] train_dtype={train_dtype}")
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
@@ -154,7 +165,7 @@ def main():
 
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=torch.float16,
+        dtype=train_dtype,
         trust_remote_code=True,
         attn_implementation="sdpa",
     ).cuda()
