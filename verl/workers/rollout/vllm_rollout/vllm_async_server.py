@@ -598,10 +598,13 @@ class vLLMHttpServer:
             # expose this V1-only cache hook.
             if hasattr(engine_client, "reset_mm_cache"):
                 await engine_client.reset_mm_cache()
-            await engine_client.collective_rpc(
-                method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
-            )
-            _server_debug("collective monkey_patch_model done")
+            if engine_version == "V1":
+                await engine_client.collective_rpc(
+                    method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
+                )
+                _server_debug("collective monkey_patch_model done")
+            else:
+                _server_debug("skip collective monkey_patch_model for V0 engine")
 
             build_app_sig = inspect.signature(build_app)
             supported_tasks: tuple[Any, ...] = ()
