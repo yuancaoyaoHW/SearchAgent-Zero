@@ -17,6 +17,8 @@ import inspect
 import json
 import logging
 import os
+import sys
+import traceback
 from pprint import pprint
 from typing import Any, Callable, Optional
 
@@ -77,6 +79,10 @@ logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
 
 
+def _server_debug(message: str) -> None:
+    print(f"[verl-vllm-server] {message}", file=sys.stderr, flush=True)
+
+
 class vLLMHttpServer:
     """vLLM http server in single node, this is equivalent to launch server with command line:
     ```
@@ -107,57 +113,66 @@ class vLLMHttpServer:
             nnodes (int): number of nodes.
             cuda_visible_devices (str): cuda visible devices.
         """
-        os.environ[get_visible_devices_keyword()] = cuda_visible_devices
-        os.environ["VERL_REPLICA_RANK"] = str(replica_rank)
+        try:
+            _server_debug(
+                f"__init__ start replica_rank={replica_rank} node_rank={node_rank} "
+                f"{get_visible_devices_keyword()}={cuda_visible_devices}"
+            )
+            os.environ[get_visible_devices_keyword()] = cuda_visible_devices
+            os.environ["VERL_REPLICA_RANK"] = str(replica_rank)
 
-        self.config = self._init_config(config)
-        self.model_config = self._init_model_config(model_config)
-        self._validate_configs()
+            self.config = self._init_config(config)
+            self.model_config = self._init_model_config(model_config)
+            self._validate_configs()
 
-        self.rollout_mode = rollout_mode
-        self.workers = workers
+            self.rollout_mode = rollout_mode
+            self.workers = workers
 
-        self.replica_rank = replica_rank
-        self.node_rank = node_rank
-        self.gpus_per_node = gpus_per_node
-        self.nnodes = nnodes
-        # model weights version, set by ServerAdapter when update weights.
-        self.global_steps = None
+            self.replica_rank = replica_rank
+            self.node_rank = node_rank
+            self.gpus_per_node = gpus_per_node
+            self.nnodes = nnodes
+            # model weights version, set by ServerAdapter when update weights.
+            self.global_steps = None
 
-        if self.rollout_mode != RolloutMode.HYBRID and self.config.load_format == "dummy":
-            logger.warning(f"rollout mode is {self.rollout_mode}, load_format is dummy, set to auto")
-            self.config.load_format = "auto"
+            if self.rollout_mode != RolloutMode.HYBRID and self.config.load_format == "dummy":
+                logger.warning(f"rollout mode is {self.rollout_mode}, load_format is dummy, set to auto")
+                self.config.load_format = "auto"
 
-        # used for http server
-        self._server_address = ray.util.get_node_ip_address().strip("[]")
-        self._server_port = None
+            # used for http server
+            self._server_address = ray.util.get_node_ip_address().strip("[]")
+            self._server_port = None
 
-        # used for controlling vllm server profiler
-        profiler_config = self.config.profiler
-        tool_config = None
-        if profiler_config is not None:
-            if profiler_config.tool in ["torch", "npu"]:
-                tool_config = omega_conf_to_dataclass((profiler_config.tool_config or {}).get(profiler_config.tool))
-            else:
-                logger.warning(f"agent loop only support torch and npu profiler, got {profiler_config.tool}")
-                profiler_config = None
-        self.profiler_controller = DistProfiler(self.replica_rank, config=profiler_config, tool_config=tool_config)
+            # used for controlling vllm server profiler
+            profiler_config = self.config.profiler
+            tool_config = None
+            if profiler_config is not None:
+                if profiler_config.tool in ["torch", "npu"]:
+                    tool_config = omega_conf_to_dataclass((profiler_config.tool_config or {}).get(profiler_config.tool))
+                else:
+                    logger.warning(f"agent loop only support torch and npu profiler, got {profiler_config.tool}")
+                    profiler_config = None
+            self.profiler_controller = DistProfiler(self.replica_rank, config=profiler_config, tool_config=tool_config)
 
-        # used for data parallel: --data-parallel-address, --data-parallel-rpc-port
-        if self.node_rank == 0:
-            self._master_address = self._server_address
-            # used for torch.distributed.init_process_group
-            self._master_port, self._master_sock = get_free_port(self._server_address, with_alive_sock=True)
             # used for data parallel: --data-parallel-address, --data-parallel-rpc-port
-            self._dp_rpc_port, self._dp_rpc_sock = get_free_port(self._server_address, with_alive_sock=True)
-            self._dp_master_port, self._dp_master_sock = get_free_port(self._server_address, with_alive_sock=True)
-        else:
-            self._master_address = None
-            self._master_port = None
-            self._dp_rpc_port = None
-            self._dp_master_port = None
+            if self.node_rank == 0:
+                self._master_address = self._server_address
+                # used for torch.distributed.init_process_group
+                self._master_port, self._master_sock = get_free_port(self._server_address, with_alive_sock=True)
+                # used for data parallel: --data-parallel-address, --data-parallel-rpc-port
+                self._dp_rpc_port, self._dp_rpc_sock = get_free_port(self._server_address, with_alive_sock=True)
+                self._dp_master_port, self._dp_master_sock = get_free_port(self._server_address, with_alive_sock=True)
+            else:
+                self._master_address = None
+                self._master_port = None
+                self._dp_rpc_port = None
+                self._dp_master_port = None
 
-        self._post_init(cuda_visible_devices)
+            self._post_init(cuda_visible_devices)
+            _server_debug(f"__init__ done replica_rank={self.replica_rank} node_rank={self.node_rank}")
+        except BaseException:
+            _server_debug("__init__ failed:\n" + traceback.format_exc())
+            raise
 
     def get_master_address(self):
         """Get master address and port for data parallel.
@@ -192,6 +207,7 @@ class vLLMHttpServer:
         )
 
     async def launch_server(self, master_address: str = None, master_port: int = None, dp_rpc_port: int = None):
+        _server_debug(f"launch_server start replica_rank={self.replica_rank} node_rank={self.node_rank}")
         if self.node_rank != 0:
             assert master_address and master_port and dp_rpc_port, (
                 "non-master node should provide master_address, master_port and dp_rpc_port"
@@ -200,6 +216,14 @@ class vLLMHttpServer:
             self._master_port = master_port
             self._dp_rpc_port = dp_rpc_port
 
+        try:
+            await self._launch_server_impl(master_address, master_port, dp_rpc_port)
+            _server_debug(f"launch_server done replica_rank={self.replica_rank} node_rank={self.node_rank}")
+        except BaseException:
+            _server_debug("launch_server failed:\n" + traceback.format_exc())
+            raise
+
+    async def _launch_server_impl(self, master_address: str = None, master_port: int = None, dp_rpc_port: int = None):
         # 1. setup vllm serve cli args
         engine_kwargs = self.config.get("engine_kwargs", {}).get(self._get_engine_kwargs_key(), {}) or {}
         engine_kwargs = {key: val for key, val in engine_kwargs.items() if val is not None}
@@ -373,59 +397,70 @@ class vLLMHttpServer:
             await self.run_headless(server_args)
 
     async def run_server(self, args: argparse.Namespace):
-        engine_args = AsyncEngineArgs.from_cli_args(args)
-        usage_context = UsageContext.OPENAI_API_SERVER
-        vllm_config = engine_args.create_engine_config(usage_context=usage_context)
-        vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
+        try:
+            _server_debug(f"run_server start replica_rank={self.replica_rank} node_rank={self.node_rank}")
+            engine_args = AsyncEngineArgs.from_cli_args(args)
+            usage_context = UsageContext.OPENAI_API_SERVER
+            vllm_config = engine_args.create_engine_config(usage_context=usage_context)
+            vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
 
-        if vllm_envs.VLLM_USE_V1:
-            from vllm.v1.engine.async_llm import AsyncLLM
+            if vllm_envs.VLLM_USE_V1:
+                from vllm.v1.engine.async_llm import AsyncLLM
 
-            engine_cls = AsyncLLM
-            engine_version = "V1"
-        else:
-            engine_cls = AsyncLLMEngine
-            engine_version = "V0"
+                engine_cls = AsyncLLM
+                engine_version = "V1"
+            else:
+                engine_cls = AsyncLLMEngine
+                engine_version = "V0"
+            _server_debug(f"creating {engine_version} engine")
 
-        fn_args = set(dict(inspect.signature(engine_cls.from_vllm_config).parameters).keys())
-        kwargs = {}
-        if "enable_log_requests" in fn_args:
-            kwargs["enable_log_requests"] = engine_args.enable_log_requests
-        if "disable_log_requests" in fn_args:
-            kwargs["disable_log_requests"] = engine_args.disable_log_requests
-        if "disable_log_stats" in fn_args:
-            kwargs["disable_log_stats"] = engine_args.disable_log_stats
+            fn_args = set(dict(inspect.signature(engine_cls.from_vllm_config).parameters).keys())
+            kwargs = {}
+            if "enable_log_requests" in fn_args:
+                kwargs["enable_log_requests"] = engine_args.enable_log_requests
+            if "disable_log_requests" in fn_args:
+                kwargs["disable_log_requests"] = engine_args.disable_log_requests
+            if "disable_log_stats" in fn_args:
+                kwargs["disable_log_stats"] = engine_args.disable_log_stats
 
-        engine_client = engine_cls.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
+            engine_client = engine_cls.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
+            _server_debug(f"{engine_version} engine created")
 
-        # Don't keep the dummy data in memory. vLLM V0 AsyncLLMEngine does not
-        # expose this V1-only cache hook.
-        if hasattr(engine_client, "reset_mm_cache"):
-            await engine_client.reset_mm_cache()
-        await engine_client.collective_rpc(
-            method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
-        )
+            # Don't keep the dummy data in memory. vLLM V0 AsyncLLMEngine does not
+            # expose this V1-only cache hook.
+            if hasattr(engine_client, "reset_mm_cache"):
+                await engine_client.reset_mm_cache()
+            await engine_client.collective_rpc(
+                method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
+            )
+            _server_debug("collective monkey_patch_model done")
 
-        build_app_sig = inspect.signature(build_app)
-        supported_tasks: tuple[Any, ...] = ()
-        if "supported_tasks" in build_app_sig.parameters:
-            supported_tasks = await engine_client.get_supported_tasks()
-            app = build_app(args, supported_tasks)
-        else:
-            app = build_app(args)
+            build_app_sig = inspect.signature(build_app)
+            supported_tasks: tuple[Any, ...] = ()
+            if "supported_tasks" in build_app_sig.parameters:
+                supported_tasks = await engine_client.get_supported_tasks()
+                app = build_app(args, supported_tasks)
+            else:
+                app = build_app(args)
+            _server_debug("build_app done")
 
-        init_app_sig = inspect.signature(init_app_state)
-        if "vllm_config" in init_app_sig.parameters:
-            await init_app_state(engine_client, vllm_config, app.state, args)
-        elif "supported_tasks" in init_app_sig.parameters:
-            await init_app_state(engine_client, app.state, args, supported_tasks)
-        else:
-            await init_app_state(engine_client, app.state, args)
-        if self.replica_rank == 0 and self.node_rank == 0:
-            logger.info(f"Initializing a {engine_version} LLM engine with config: {vllm_config}")
+            init_app_sig = inspect.signature(init_app_state)
+            if "vllm_config" in init_app_sig.parameters:
+                await init_app_state(engine_client, vllm_config, app.state, args)
+            elif "supported_tasks" in init_app_sig.parameters:
+                await init_app_state(engine_client, app.state, args, supported_tasks)
+            else:
+                await init_app_state(engine_client, app.state, args)
+            _server_debug("init_app_state done")
+            if self.replica_rank == 0 and self.node_rank == 0:
+                logger.info(f"Initializing a {engine_version} LLM engine with config: {vllm_config}")
 
-        self.engine = engine_client
-        self._server_port, self._server_task = await run_uvicorn(app, args, self._server_address)
+            self.engine = engine_client
+            self._server_port, self._server_task = await run_uvicorn(app, args, self._server_address)
+            _server_debug(f"uvicorn started port={self._server_port}")
+        except BaseException:
+            _server_debug("run_server failed:\n" + traceback.format_exc())
+            raise
 
     async def run_headless(self, args: argparse.Namespace):
         """Run headless server in a separate thread."""
