@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 import traceback
+from dataclasses import fields, is_dataclass
 from pprint import pprint
 from typing import Any, Callable, Optional
 
@@ -84,6 +85,37 @@ logger.setLevel(logging.INFO)
 
 def _server_debug(message: str) -> None:
     print(f"[verl-vllm-server] {message}", file=sys.stderr, flush=True)
+
+
+def _plain_config(config, exclude: set[str] | None = None):
+    exclude = exclude or set()
+    if is_dataclass(config):
+        return {
+            field.name: _plain_config(getattr(config, field.name), exclude=set())
+            for field in fields(config)
+            if field.name not in exclude and not field.name.startswith("_")
+        }
+    if isinstance(config, dict):
+        return {key: _plain_config(value, exclude=set()) for key, value in config.items()}
+    if isinstance(config, list):
+        return [_plain_config(value, exclude=set()) for value in config]
+    if isinstance(config, tuple):
+        return tuple(_plain_config(value, exclude=set()) for value in config)
+    return config
+
+
+def _model_config_init_payload(model_config):
+    runtime_fields = {
+        "hf_config",
+        "generation_config",
+        "tokenizer",
+        "processor",
+        "local_path",
+        "architectures",
+        "local_hf_config_path",
+        "local_tokenizer_path",
+    }
+    return _plain_config(model_config, exclude=runtime_fields)
 
 
 class vLLMHttpServer:
@@ -195,7 +227,7 @@ class vLLMHttpServer:
         self,
         config,
         model_config,
-        rollout_mode: RolloutMode,
+        rollout_mode: RolloutMode | str,
         workers: list[ActorHandle],
         replica_rank: int,
         node_rank: int,
@@ -204,6 +236,8 @@ class vLLMHttpServer:
         cuda_visible_devices: str,
     ):
         _server_debug(f"setup start replica_rank={replica_rank} node_rank={node_rank}")
+        if not isinstance(rollout_mode, RolloutMode):
+            rollout_mode = RolloutMode(rollout_mode)
         self.__init__(
             config=config,
             model_config=model_config,
@@ -1009,9 +1043,11 @@ class vLLMReplica(RolloutReplica):
 
         # create server actor in each node with node affinity and cuda visible devices
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
+        model_config_payload = _model_config_init_payload(self.model_config)
         setup_tasks = []
         for node_rank in range(nnodes):
             workers = self.workers[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
+            server_workers = workers if self.config.data_parallel_size > 1 else []
             node_cuda_visible_devices = ",".join(
                 worker_cuda_visible_devices[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
             )
@@ -1046,9 +1082,9 @@ class vLLMReplica(RolloutReplica):
             setup_tasks.append(
                 server.setup.remote(
                     config=self.config,
-                    model_config=self.model_config,
-                    rollout_mode=self.rollout_mode,
-                    workers=workers,
+                    model_config=model_config_payload,
+                    rollout_mode=self.rollout_mode.value,
+                    workers=server_workers,
                     replica_rank=self.replica_rank,
                     node_rank=node_rank,
                     gpus_per_node=gpus_per_replica_node,
