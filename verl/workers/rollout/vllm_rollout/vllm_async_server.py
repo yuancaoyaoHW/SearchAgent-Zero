@@ -21,17 +21,18 @@ from pprint import pprint
 from typing import Any, Callable, Optional
 
 import ray
+import vllm.envs as vllm_envs
 import vllm.entrypoints.cli.serve
 from packaging import version
 from ray.actor import ActorHandle
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.api_server import build_app, init_app_state
 from vllm.inputs import TokensPrompt
 from vllm.lora.request import LoRARequest
 from vllm.outputs import RequestOutput
 from vllm.usage.usage_lib import UsageContext
-from vllm.v1.engine.async_llm import AsyncLLM
 
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.device import get_resource_name, get_visible_devices_keyword, is_torch_npu_available
@@ -377,17 +378,30 @@ class vLLMHttpServer:
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
         vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
 
-        fn_args = set(dict(inspect.signature(AsyncLLM.from_vllm_config).parameters).keys())
+        if vllm_envs.VLLM_USE_V1:
+            from vllm.v1.engine.async_llm import AsyncLLM
+
+            engine_cls = AsyncLLM
+            engine_version = "V1"
+        else:
+            engine_cls = AsyncLLMEngine
+            engine_version = "V0"
+
+        fn_args = set(dict(inspect.signature(engine_cls.from_vllm_config).parameters).keys())
         kwargs = {}
         if "enable_log_requests" in fn_args:
             kwargs["enable_log_requests"] = engine_args.enable_log_requests
+        if "disable_log_requests" in fn_args:
+            kwargs["disable_log_requests"] = engine_args.disable_log_requests
         if "disable_log_stats" in fn_args:
             kwargs["disable_log_stats"] = engine_args.disable_log_stats
 
-        engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
+        engine_client = engine_cls.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
 
-        # Don't keep the dummy data in memory
-        await engine_client.reset_mm_cache()
+        # Don't keep the dummy data in memory. vLLM V0 AsyncLLMEngine does not
+        # expose this V1-only cache hook.
+        if hasattr(engine_client, "reset_mm_cache"):
+            await engine_client.reset_mm_cache()
         await engine_client.collective_rpc(
             method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
         )
@@ -408,7 +422,7 @@ class vLLMHttpServer:
         else:
             await init_app_state(engine_client, app.state, args)
         if self.replica_rank == 0 and self.node_rank == 0:
-            logger.info(f"Initializing a V1 LLM engine with config: {vllm_config}")
+            logger.info(f"Initializing a {engine_version} LLM engine with config: {vllm_config}")
 
         self.engine = engine_client
         self._server_port, self._server_task = await run_uvicorn(app, args, self._server_address)
