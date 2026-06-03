@@ -234,10 +234,13 @@ class vLLMHttpServer:
             _server_debug("__init__ failed:\n" + traceback.format_exc())
             raise
 
-    def ping(self):
+    async def ping(self):
         _server_debug("ping")
         if os.environ.get("VERL_VLLM_SERVER_SETUP_ON_PING") == "1":
             self.setup_from_env_file()
+        if os.environ.get("VERL_VLLM_SERVER_LAUNCH_ON_PING") == "1":
+            await self.launch_server()
+            return {"server_address": self._server_address, "server_port": self._server_port}
         return True
 
     def setup(
@@ -1132,6 +1135,7 @@ class vLLMReplica(RolloutReplica):
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
         config_payload = _plain_config(self.config)
         model_config_payload = _model_config_init_payload(self.model_config)
+        launch_on_ping = nnodes == 1
         for node_rank in range(nnodes):
             workers = self.workers[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
             server_workers = workers if self.config.data_parallel_size > 1 else []
@@ -1174,6 +1178,7 @@ class vLLMReplica(RolloutReplica):
                         "NCCL_CUMEM_ENABLE": "0",
                         "VERL_VLLM_SERVER_SETUP_FILE": setup_file,
                         "VERL_VLLM_SERVER_SETUP_ON_PING": "1",
+                        "VERL_VLLM_SERVER_LAUNCH_ON_PING": "1" if launch_on_ping else "0",
                     }
                 },
                 name=name,
@@ -1181,7 +1186,17 @@ class vLLMReplica(RolloutReplica):
             ).remote()
             self.servers.append(server)
 
-        await asyncio.gather(*[server.ping.remote() for server in self.servers])
+        ping_results = await asyncio.gather(*[server.ping.remote() for server in self.servers])
+        if launch_on_ping:
+            server_address = ping_results[0]["server_address"]
+            server_port = ping_results[0]["server_port"]
+            self._server_handle = self.servers[0]
+            self._server_address = (
+                f"[{server_address}]:{server_port}"
+                if is_valid_ipv6_address(server_address)
+                else f"{server_address}:{server_port}"
+            )
+            return
 
         # launch http server in each node
         master_address, master_port, dp_rpc_port = await self.servers[0].get_master_address.remote()
