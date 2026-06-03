@@ -789,8 +789,12 @@ class vLLMHttpServer:
             raise ValueError(f"wake_up not support rollout_mode {self.rollout_mode}")
         elif self.rollout_mode == RolloutMode.COLOCATED:
             # Directly call engine to wake up without sync weights.
-            await self.engine.wake_up(tags=self._get_wake_up_tags())
-            await self.engine.reset_prefix_cache()
+            if hasattr(self.engine, "wake_up"):
+                await self.engine.wake_up(tags=self._get_wake_up_tags())
+            else:
+                _server_debug("skip wake_up for engine without wake_up")
+            if hasattr(self.engine, "reset_prefix_cache"):
+                await self.engine.reset_prefix_cache()
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip wake_up in standalone mode")
 
@@ -801,7 +805,10 @@ class vLLMHttpServer:
         if self.rollout_mode == RolloutMode.HYBRID:
             await self._sleep_hybrid()
         elif self.rollout_mode == RolloutMode.COLOCATED:
-            await self.engine.sleep(level=1)
+            if hasattr(self.engine, "sleep"):
+                await self.engine.sleep(level=1)
+            else:
+                _server_debug("skip sleep for engine without sleep")
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip sleep in standalone mode")
 
@@ -822,15 +829,20 @@ class vLLMHttpServer:
             await self.engine.stop_profile()
 
     async def clear_kv_cache(self):
-        if self.node_rank == 0:
+        if self.node_rank == 0 and hasattr(self.engine, "reset_prefix_cache"):
             await self.engine.reset_prefix_cache()
+        elif self.node_rank == 0:
+            _server_debug("skip clear_kv_cache for engine without reset_prefix_cache")
 
     async def set_global_steps(self, global_steps: int):
         """Set the global steps of the model weights."""
         self.global_steps = global_steps
 
     async def wait_for_requests_to_drain(self):
-        await self.engine.wait_for_requests_to_drain()
+        if hasattr(self.engine, "wait_for_requests_to_drain"):
+            await self.engine.wait_for_requests_to_drain()
+        else:
+            _server_debug("skip wait_for_requests_to_drain for engine without support")
 
     async def abort_all_requests(self, reset_prefix_cache: bool = True) -> dict[str, Any]:
         """Abort all ongoing generation requests.
@@ -1086,6 +1098,9 @@ class vLLMHttpServer:
         """HYBRID sleep: lora adapters only need level=1; full weights need level=2."""
         # Don't use engine.sleep(level=2) here
         # lora only update adapter weights, so set sleep level to 1
+        if not hasattr(self.engine, "collective_rpc") or not vllm_envs.VLLM_USE_V1:
+            _server_debug("skip hybrid sleep for engine without collective_rpc support")
+            return
         if self.lora_as_adapter:
             sleep_level = 1
         else:
