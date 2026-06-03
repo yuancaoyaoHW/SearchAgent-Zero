@@ -1051,7 +1051,7 @@ class vLLMReplica(RolloutReplica):
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
         config_payload = _plain_config(self.config)
         model_config_payload = _model_config_init_payload(self.model_config)
-        setup_tasks = []
+        setup_payloads = []
         for node_rank in range(nnodes):
             workers = self.workers[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
             server_workers = workers if self.config.data_parallel_size > 1 else []
@@ -1086,21 +1086,22 @@ class vLLMReplica(RolloutReplica):
                 max_concurrency=self.max_concurrency,
             ).remote()
             self.servers.append(server)
-            setup_tasks.append(
-                server.setup.remote(
-                    config=config_payload,
-                    model_config=model_config_payload,
-                    rollout_mode=self.rollout_mode.value,
-                    workers=server_workers,
-                    replica_rank=self.replica_rank,
-                    node_rank=node_rank,
-                    gpus_per_node=gpus_per_replica_node,
-                    nnodes=nnodes,
-                    cuda_visible_devices=node_cuda_visible_devices,
-                )
+            setup_payloads.append(
+                {
+                    "config": config_payload,
+                    "model_config": model_config_payload,
+                    "rollout_mode": self.rollout_mode.value,
+                    "workers": server_workers,
+                    "replica_rank": self.replica_rank,
+                    "node_rank": node_rank,
+                    "gpus_per_node": gpus_per_replica_node,
+                    "nnodes": nnodes,
+                    "cuda_visible_devices": node_cuda_visible_devices,
+                }
             )
 
         await asyncio.gather(*[server.ping.remote() for server in self.servers])
+        setup_tasks = [server.setup.remote(**payload) for server, payload in zip(self.servers, setup_payloads)]
         await asyncio.gather(*setup_tasks)
 
         # launch http server in each node
