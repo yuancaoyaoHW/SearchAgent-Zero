@@ -365,6 +365,11 @@ class vLLMHttpServer:
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
     ):
+        if not vllm_envs.VLLM_USE_V1:
+            method_name = method if isinstance(method, str) else getattr(method, "__name__", str(method))
+            if method_name in {"wake_up", "sleep"}:
+                _server_debug(f"skip collective_rpc({method_name}) for V0 engine")
+                return None
         await self.engine.collective_rpc(
             method=method,
             timeout=timeout,
