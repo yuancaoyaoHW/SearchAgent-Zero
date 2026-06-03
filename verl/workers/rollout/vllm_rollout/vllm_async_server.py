@@ -22,6 +22,8 @@ import traceback
 from pprint import pprint
 from typing import Any, Callable, Optional
 
+print("[verl-vllm-server] module import start", file=sys.stderr, flush=True)
+
 import ray
 import vllm.envs as vllm_envs
 import vllm.entrypoints.cli.serve
@@ -29,7 +31,6 @@ from packaging import version
 from ray.actor import ActorHandle
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.api_server import build_app, init_app_state
 from vllm.inputs import TokensPrompt
 from vllm.lora.request import LoRARequest
@@ -54,6 +55,8 @@ from verl.workers.rollout.vllm_rollout.utils import (
     extract_prompt_logprobs,
     get_vllm_max_lora_rank,
 )
+
+print("[verl-vllm-server] module import done", file=sys.stderr, flush=True)
 
 _VLLM_VERSION = version.parse(vllm.__version__)
 
@@ -410,6 +413,8 @@ class vLLMHttpServer:
                 engine_cls = AsyncLLM
                 engine_version = "V1"
             else:
+                from vllm.engine.async_llm_engine import AsyncLLMEngine
+
                 engine_cls = AsyncLLMEngine
                 engine_version = "V0"
             _server_debug(f"creating {engine_version} engine")
