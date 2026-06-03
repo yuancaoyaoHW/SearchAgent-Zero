@@ -223,6 +223,10 @@ class vLLMHttpServer:
             _server_debug("__init__ failed:\n" + traceback.format_exc())
             raise
 
+    def ping(self):
+        _server_debug("ping")
+        return True
+
     def setup(
         self,
         config,
@@ -1096,6 +1100,7 @@ class vLLMReplica(RolloutReplica):
                 )
             )
 
+        await asyncio.gather(*[server.ping.remote() for server in self.servers])
         await asyncio.gather(*setup_tasks)
 
         # launch http server in each node
