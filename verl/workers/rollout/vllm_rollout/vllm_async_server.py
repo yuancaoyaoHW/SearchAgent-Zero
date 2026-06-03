@@ -17,8 +17,10 @@ import inspect
 import json
 import logging
 import os
+import pickle
 import sys
 import traceback
+import uuid
 from dataclasses import fields, is_dataclass
 from pprint import pprint
 from typing import Any, Callable, Optional
@@ -116,6 +118,15 @@ def _model_config_init_payload(model_config):
         "local_tokenizer_path",
     }
     return _plain_config(model_config, exclude=runtime_fields)
+
+
+def _write_server_setup_payload(payload: dict[str, Any]) -> str:
+    setup_dir = os.path.join(os.getenv("RAY_TMPDIR", "/tmp"), "verl_vllm_server_setup")
+    os.makedirs(setup_dir, exist_ok=True)
+    setup_file = os.path.join(setup_dir, f"{uuid.uuid4().hex}.pkl")
+    with open(setup_file, "wb") as f:
+        pickle.dump(payload, f)
+    return setup_file
 
 
 class vLLMHttpServer:
@@ -308,6 +319,21 @@ class vLLMHttpServer:
         )
         _server_debug("setup_from_payloads done")
         return True
+
+    def setup_from_env_file(self):
+        setup_file = os.environ.get("VERL_VLLM_SERVER_SETUP_FILE")
+        _server_debug(f"setup_from_env_file start file={setup_file}")
+        if not setup_file:
+            raise RuntimeError("VERL_VLLM_SERVER_SETUP_FILE is not set")
+        try:
+            with open(setup_file, "rb") as f:
+                payload = pickle.load(f)
+            self.setup(**payload)
+            _server_debug("setup_from_env_file done")
+            return True
+        except BaseException:
+            _server_debug("setup_from_env_file failed:\n" + traceback.format_exc())
+            raise
 
     def get_master_address(self):
         """Get master address and port for data parallel.
@@ -1104,7 +1130,6 @@ class vLLMReplica(RolloutReplica):
         nnodes, gpus_per_replica_node = self.nnodes, self.gpus_per_replica_node
         config_payload = _plain_config(self.config)
         model_config_payload = _model_config_init_payload(self.model_config)
-        setup_payloads = []
         for node_rank in range(nnodes):
             workers = self.workers[node_rank * gpus_per_replica_node : (node_rank + 1) * gpus_per_replica_node]
             server_workers = workers if self.config.data_parallel_size > 1 else []
@@ -1119,6 +1144,18 @@ class vLLMReplica(RolloutReplica):
                 name = f"{prefix}server_teacher_{self.replica_rank}_{node_rank}{self.name_suffix}"
             else:
                 name = f"{prefix}server_{self.replica_rank}_{node_rank}{self.name_suffix}"
+            setup_payload = {
+                "config": config_payload,
+                "model_config": model_config_payload,
+                "rollout_mode": self.rollout_mode.value,
+                "workers": server_workers,
+                "replica_rank": self.replica_rank,
+                "node_rank": node_rank,
+                "gpus_per_node": gpus_per_replica_node,
+                "nnodes": nnodes,
+                "cuda_visible_devices": node_cuda_visible_devices,
+            }
+            setup_file = _write_server_setup_payload(setup_payload)
             server = self.server_class.options(
                 scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
                     node_id=node_id,
@@ -1133,56 +1170,16 @@ class vLLMReplica(RolloutReplica):
                         # https://docs.vllm.ai/en/latest/usage/troubleshooting.html?h=nccl_cumem_enable#known-issues
                         # https://github.com/vllm-project/vllm/blob/c6b0a7d3ba03ca414be1174e9bd86a97191b7090/vllm/worker/worker_base.py#L445
                         "NCCL_CUMEM_ENABLE": "0",
+                        "VERL_VLLM_SERVER_SETUP_FILE": setup_file,
                     }
                 },
                 name=name,
                 max_concurrency=self.max_concurrency,
             ).remote()
             self.servers.append(server)
-            setup_payloads.append(
-                {
-                    "config": config_payload,
-                    "model_config": model_config_payload,
-                    "rollout_mode": self.rollout_mode.value,
-                    "workers": server_workers,
-                    "replica_rank": self.replica_rank,
-                    "node_rank": node_rank,
-                    "gpus_per_node": gpus_per_replica_node,
-                    "nnodes": nnodes,
-                    "cuda_visible_devices": node_cuda_visible_devices,
-                }
-            )
 
         await asyncio.gather(*[server.ping.remote() for server in self.servers])
-        await asyncio.gather(
-            *[
-                server.setup_primitives.remote(
-                    rollout_mode=payload["rollout_mode"],
-                    replica_rank=payload["replica_rank"],
-                    node_rank=payload["node_rank"],
-                    gpus_per_node=payload["gpus_per_node"],
-                    nnodes=payload["nnodes"],
-                    cuda_visible_devices=payload["cuda_visible_devices"],
-                )
-                for server, payload in zip(self.servers, setup_payloads)
-            ]
-        )
-        await asyncio.gather(
-            *[
-                server.setup_config_payload.remote(payload["config"])
-                for server, payload in zip(self.servers, setup_payloads)
-            ]
-        )
-        await asyncio.gather(
-            *[
-                server.setup_model_config_payload.remote(payload["model_config"])
-                for server, payload in zip(self.servers, setup_payloads)
-            ]
-        )
-        await asyncio.gather(
-            *[server.setup_workers.remote(payload["workers"]) for server, payload in zip(self.servers, setup_payloads)]
-        )
-        await asyncio.gather(*[server.setup_from_payloads.remote() for server in self.servers])
+        await asyncio.gather(*[server.setup_from_env_file.remote() for server in self.servers])
 
         # launch http server in each node
         master_address, master_port, dp_rpc_port = await self.servers[0].get_master_address.remote()
