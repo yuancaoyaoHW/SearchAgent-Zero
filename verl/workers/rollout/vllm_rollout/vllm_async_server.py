@@ -236,6 +236,8 @@ class vLLMHttpServer:
 
     def ping(self):
         _server_debug("ping")
+        if os.environ.get("VERL_VLLM_SERVER_SETUP_ON_PING") == "1":
+            self.setup_from_env_file()
         return True
 
     def setup(
@@ -1171,6 +1173,7 @@ class vLLMReplica(RolloutReplica):
                         # https://github.com/vllm-project/vllm/blob/c6b0a7d3ba03ca414be1174e9bd86a97191b7090/vllm/worker/worker_base.py#L445
                         "NCCL_CUMEM_ENABLE": "0",
                         "VERL_VLLM_SERVER_SETUP_FILE": setup_file,
+                        "VERL_VLLM_SERVER_SETUP_ON_PING": "1",
                     }
                 },
                 name=name,
@@ -1179,7 +1182,6 @@ class vLLMReplica(RolloutReplica):
             self.servers.append(server)
 
         await asyncio.gather(*[server.ping.remote() for server in self.servers])
-        await asyncio.gather(*[server.setup_from_env_file.remote() for server in self.servers])
 
         # launch http server in each node
         master_address, master_port, dp_rpc_port = await self.servers[0].get_master_address.remote()
